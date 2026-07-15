@@ -94,13 +94,15 @@ async function callOpenAICompatible(
   apiKey: string,
   model: string,
   messages: Msg[],
-  options: { label?: string; extraHeaders?: Record<string, string>; maxTokens?: number } = {},
+  options: { label?: string; extraHeaders?: Record<string, string>; maxTokens?: number; auth?: "bearer" | "lovable" } = {},
 ) {
   const res = await fetch(`${baseURL}/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
+      ...(options.auth === "lovable"
+        ? { "Lovable-API-Key": apiKey, "X-Lovable-AIG-SDK": "manual-fetch" }
+        : { Authorization: `Bearer ${apiKey}` }),
       ...options.extraHeaders,
     },
     body: JSON.stringify({
@@ -135,7 +137,7 @@ export const testProvider = createServerFn({ method: "POST" })
       if (data.provider === "lovable") {
         const key = process.env.LOVABLE_API_KEY;
         if (!key) throw new Error("Lovable AI is not configured.");
-        reply = await callOpenAICompatible("https://ai.gateway.lovable.dev/v1", key, data.model, messages, { label: "Lovable AI", maxTokens: 16 });
+        reply = await callOpenAICompatible("https://ai.gateway.lovable.dev/v1", key, data.model, messages, { label: "Lovable AI", maxTokens: 16, auth: "lovable" });
       } else if (data.provider === "anthropic") {
         if (!data.apiKey) throw new Error("Missing API key.");
         reply = await callAnthropic(data.apiKey, data.model, messages, 16);
@@ -230,7 +232,7 @@ export const runChat = createServerFn({ method: "POST" })
     } else if (provider === "lovable") {
       const key = process.env.LOVABLE_API_KEY;
       if (!key) throw new Error("Lovable AI is not configured. Please contact support.");
-      reply = await callOpenAICompatible("https://ai.gateway.lovable.dev/v1", key, model, messages, { label: "Lovable AI" });
+      reply = await callOpenAICompatible("https://ai.gateway.lovable.dev/v1", key, model, messages, { label: "Lovable AI", auth: "lovable" });
     } else {
       reply = await callOpenAI(settings!.ai_api_key!, model, messages);
     }
