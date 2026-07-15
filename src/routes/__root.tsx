@@ -83,10 +83,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "description", content: "A premium mobile AI coding companion from Nepal. Ask, generate, and debug Python, C, C++, C#, Java, SQL, JavaScript and more — with live web search." },
       { name: "author", content: "Nepali Cooding AI" },
       { name: "theme-color", content: "#dc143c" },
-      { property: "og:title", content: "Nepali Cooding AI" },
-      { property: "og:description", content: "Premium dark-themed AI coding companion for every language." },
+      { property: "og:title", content: "Nepali Cooding AI — Learn every language" },
+      { property: "og:description", content: "A premium mobile AI coding companion from Nepal. Ask, generate, and debug Python, C, C++, C#, Java, SQL, JavaScript and more — with live web search." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: "Nepali Cooding AI — Learn every language" },
+      { name: "twitter:description", content: "A premium mobile AI coding companion from Nepal. Ask, generate, and debug Python, C, C++, C#, Java, SQL, JavaScript and more — with live web search." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/2e4c5c83-c0b9-4e30-9bd5-11ba11ab38d0/id-preview-b36b2be3--8f1a7552-5b85-48a6-bdfa-ea0a23030f41.lovable.app-1784100607525.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/2e4c5c83-c0b9-4e30-9bd5-11ba11ab38d0/id-preview-b36b2be3--8f1a7552-5b85-48a6-bdfa-ea0a23030f41.lovable.app-1784100607525.png" },
     ],
     links: [
       {
