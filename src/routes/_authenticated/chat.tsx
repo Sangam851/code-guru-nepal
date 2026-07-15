@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Loader2, Menu, Plus, Send, Settings as SettingsIcon, Globe, Trash2, MessageSquare, Zap } from "lucide-react";
+import { Loader2, Menu, Plus, Send, Settings as SettingsIcon, Globe, Trash2, MessageSquare, Zap, Copy, Check } from "lucide-react";
 import { NepalLogo } from "@/components/NepalLogo";
 import { LANGUAGES } from "@/lib/languages";
 import ReactMarkdown from "react-markdown";
@@ -352,47 +352,84 @@ function EmptyState({ onPickLanguage }: { onPickLanguage: (id: string) => void }
 
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === "user";
-  return (
-    <div className={cn("flex gap-2", isUser ? "justify-end" : "justify-start")}>
-      {!isUser && (
-        <div className="h-8 w-8 shrink-0 rounded-full flex items-center justify-center bg-[image:var(--gradient-primary)] shadow-[var(--shadow-glow)]">
-          <NepalLogo size={20} />
+  const [copied, setCopied] = useState(false);
+  const copyAll = async () => {
+    await navigator.clipboard.writeText(message.content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  if (isUser) {
+    return (
+      <div className="flex justify-end">
+        <div className="max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed bg-[var(--user-bubble)] text-foreground rounded-br-md whitespace-pre-wrap">
+          {message.content}
         </div>
-      )}
-      <div
-        className={cn(
-          "max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed",
-          isUser
-            ? "bg-[image:var(--gradient-primary)] text-primary-foreground rounded-br-md"
-            : "bg-card border border-border/60 rounded-bl-md"
-        )}
-      >
-        {isUser ? (
-          <div className="whitespace-pre-wrap">{message.content}</div>
-        ) : (
-          <div className="prose prose-invert prose-sm max-w-none prose-p:my-2 prose-pre:my-0 prose-pre:bg-transparent prose-pre:p-0">
-            <ReactMarkdown
-              components={{
-                code({ className, children, ...props }: React.HTMLAttributes<HTMLElement> & { inline?: boolean }) {
-                  const inline = (props as { inline?: boolean }).inline;
-                  const match = /language-(\w+)/.exec(className || "");
-                  const value = String(children).replace(/\n$/, "");
-                  if (!inline && match) {
-                    return <CodeBlock language={match[1]} value={value} />;
-                  }
-                  return (
-                    <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">
-                      {children}
-                    </code>
-                  );
-                },
-              }}
+      </div>
+    );
+  }
+
+  // Split assistant content into alternating text / fenced-code segments so
+  // explanations render in their own box and each code block sits separately.
+  const segments = splitSegments(message.content);
+
+  return (
+    <div className="flex gap-2 justify-start">
+      <div className="h-8 w-8 shrink-0 rounded-full flex items-center justify-center bg-[image:var(--gradient-primary)] shadow-[var(--shadow-glow)]">
+        <NepalLogo size={20} />
+      </div>
+      <div className="flex-1 min-w-0 space-y-3">
+        {segments.map((seg, i) =>
+          seg.type === "code" ? (
+            <CodeBlock key={i} language={seg.lang} value={seg.value} />
+          ) : (
+            <div
+              key={i}
+              className="rounded-2xl rounded-bl-md border border-border/60 bg-card px-4 py-3 text-sm leading-relaxed prose prose-invert prose-sm max-w-none prose-p:my-2 prose-headings:mt-2 prose-headings:mb-2"
             >
-              {message.content}
-            </ReactMarkdown>
-          </div>
+              <ReactMarkdown
+                components={{
+                  code({ className, children }) {
+                    return (
+                      <code className={cn("rounded bg-muted px-1.5 py-0.5 text-xs font-mono", className)}>
+                        {children}
+                      </code>
+                    );
+                  },
+                }}
+              >
+                {seg.value}
+              </ReactMarkdown>
+            </div>
+          ),
         )}
+        <button
+          onClick={copyAll}
+          className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition"
+        >
+          {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+          {copied ? "Copied" : "Copy answer"}
+        </button>
       </div>
     </div>
   );
+}
+
+type Segment = { type: "text"; value: string } | { type: "code"; lang?: string; value: string };
+
+function splitSegments(content: string): Segment[] {
+  const out: Segment[] = [];
+  const re = /```(\w+)?\n?([\s\S]*?)```/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content)) !== null) {
+    const text = content.slice(last, m.index).trim();
+    if (text) out.push({ type: "text", value: text });
+    out.push({ type: "code", lang: m[1], value: m[2].replace(/\n$/, "") });
+    last = m.index + m[0].length;
+  }
+  const tail = content.slice(last).trim();
+  if (tail) out.push({ type: "text", value: tail });
+  if (out.length === 0) out.push({ type: "text", value: content });
+  return out;
 }
