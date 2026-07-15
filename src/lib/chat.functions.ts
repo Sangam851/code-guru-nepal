@@ -101,7 +101,7 @@ async function callOpenAICompatible(
     headers: {
       "Content-Type": "application/json",
       ...(options.auth === "lovable"
-        ? { "Lovable-API-Key": apiKey, "X-Lovable-AIG-SDK": "manual-fetch" }
+        ? { "Lovable-API-Key": apiKey, "X-Lovable-AIG-SDK": "vercel-ai-sdk" }
         : { Authorization: `Bearer ${apiKey}` }),
       ...options.extraHeaders,
     },
