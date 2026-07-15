@@ -137,7 +137,7 @@ export const runChat = createServerFn({ method: "POST" })
       lovable: "google/gemini-3.5-flash",
       openai: "gpt-4o-mini",
       anthropic: "claude-3-5-sonnet-latest",
-      openrouter: "anthropic/claude-3.5-sonnet",
+      openrouter: "anthropic/claude-sonnet-4.5",
     };
     const model = settings?.model || defaultModels[provider] || "google/gemini-3.5-flash";
 
