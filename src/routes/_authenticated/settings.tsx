@@ -15,8 +15,8 @@ export const Route = createFileRoute("/_authenticated/settings")({
 });
 
 function SettingsPage() {
-  const [provider, setProvider] = useState("openai");
-  const [model, setModel] = useState("gpt-4o-mini");
+  const [provider, setProvider] = useState("lovable");
+  const [model, setModel] = useState("google/gemini-3.5-flash");
   const [aiKey, setAiKey] = useState("");
   const [tavilyKey, setTavilyKey] = useState("");
   const [loading, setLoading] = useState(true);
@@ -26,8 +26,8 @@ function SettingsPage() {
     (async () => {
       const { data } = await supabase.from("user_settings").select("*").maybeSingle();
       if (data) {
-        setProvider(data.provider ?? "openai");
-        setModel(data.model ?? "gpt-4o-mini");
+        setProvider(data.provider ?? "lovable");
+        setModel(data.model ?? "google/gemini-3.5-flash");
         setAiKey(data.ai_api_key ?? "");
         setTavilyKey(data.tavily_api_key ?? "");
       }
@@ -84,12 +84,20 @@ function SettingsPage() {
                   <Label>Provider</Label>
                   <Select value={provider} onValueChange={(v) => {
                     setProvider(v);
-                    setModel(v === "anthropic" ? "claude-3-5-sonnet-latest" : "gpt-4o-mini");
+                    const defaults: Record<string, string> = {
+                      lovable: "google/gemini-3.5-flash",
+                      openai: "gpt-4o-mini",
+                      anthropic: "claude-3-5-sonnet-latest",
+                      openrouter: "anthropic/claude-3.5-sonnet",
+                    };
+                    setModel(defaults[v] ?? "google/gemini-3.5-flash");
                   }}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="lovable">Lovable AI (built-in, no key)</SelectItem>
                       <SelectItem value="openai">OpenAI</SelectItem>
                       <SelectItem value="anthropic">Anthropic</SelectItem>
+                      <SelectItem value="openrouter">OpenRouter</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -98,16 +106,25 @@ function SettingsPage() {
                   <Input value={model} onChange={(e) => setModel(e.target.value)} />
                 </div>
               </div>
-              <div className="space-y-1.5">
-                <Label>{provider === "anthropic" ? "Anthropic" : "OpenAI"} API key</Label>
-                <Input
-                  type="password"
-                  value={aiKey}
-                  onChange={(e) => setAiKey(e.target.value)}
-                  placeholder={provider === "anthropic" ? "sk-ant-..." : "sk-..."}
-                />
-                <p className="text-xs text-muted-foreground">Stored securely, only readable by you.</p>
-              </div>
+              {provider !== "lovable" && (
+                <div className="space-y-1.5">
+                  <Label>
+                    {provider === "anthropic" ? "Anthropic" : provider === "openrouter" ? "OpenRouter" : "OpenAI"} API key
+                  </Label>
+                  <Input
+                    type="password"
+                    value={aiKey}
+                    onChange={(e) => setAiKey(e.target.value)}
+                    placeholder={provider === "anthropic" ? "sk-ant-..." : provider === "openrouter" ? "sk-or-..." : "sk-..."}
+                  />
+                  <p className="text-xs text-muted-foreground">Stored securely, only readable by you.</p>
+                </div>
+              )}
+              {provider === "lovable" && (
+                <p className="text-xs text-muted-foreground">
+                  Uses the built-in Lovable AI Gateway — no API key needed. Try models like <code>google/gemini-3.5-flash</code>, <code>openai/gpt-5.4-mini</code>, or <code>openai/gpt-5.5</code>.
+                </p>
+              )}
             </Card>
 
             <Card className="p-5 space-y-3 bg-card/70 border-border/60 backdrop-blur">

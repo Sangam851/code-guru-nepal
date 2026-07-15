@@ -70,6 +70,21 @@ async function callAnthropic(apiKey: string, model: string, messages: Msg[]) {
     .join("\n");
 }
 
+async function callOpenAICompatible(baseURL: string, apiKey: string, model: string, messages: Msg[], extraHeaders: Record<string, string> = {}) {
+  const res = await fetch(`${baseURL}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+      ...extraHeaders,
+    },
+    body: JSON.stringify({ model, messages, temperature: 0.3 }),
+  });
+  if (!res.ok) throw new Error(`AI error ${res.status}: ${await res.text()}`);
+  const data = (await res.json()) as { choices: Array<{ message: { content: string } }> };
+  return data.choices[0]?.message?.content ?? "";
+}
+
 export const runChat = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => RunInput.parse(data))
@@ -82,7 +97,11 @@ export const runChat = createServerFn({ method: "POST" })
     ]);
     if (sErr) throw new Error(sErr.message);
     if (hErr) throw new Error(hErr.message);
-    if (!settings?.ai_api_key) throw new Error("Add your AI API key in Settings first.");
+    const provider = settings?.provider ?? "lovable";
+    const needsUserKey = provider === "openai" || provider === "anthropic" || provider === "openrouter";
+    if (needsUserKey && !settings?.ai_api_key) {
+      throw new Error("Add your AI API key in Settings first, or switch to the built-in Lovable AI provider.");
+    }
 
     // Persist the user message
     const { error: insErr } = await supabase.from("messages").insert({
@@ -96,7 +115,7 @@ export const runChat = createServerFn({ method: "POST" })
     // Optional web search context
     let searchContext = "";
     if (data.webSearch) {
-      if (!settings.tavily_api_key) throw new Error("Add your Tavily API key in Settings to use web search.");
+      if (!settings?.tavily_api_key) throw new Error("Add your Tavily API key in Settings to use web search.");
       try {
         searchContext = await tavilySearch(settings.tavily_api_key, data.userMessage);
       } catch (e) {
@@ -114,12 +133,29 @@ export const runChat = createServerFn({ method: "POST" })
       { role: "user", content: data.userMessage },
     ];
 
-    const provider = settings.provider ?? "openai";
-    const model = settings.model || (provider === "anthropic" ? "claude-3-5-sonnet-latest" : "gpt-4o-mini");
-    const reply =
-      provider === "anthropic"
-        ? await callAnthropic(settings.ai_api_key, model, messages)
-        : await callOpenAI(settings.ai_api_key, model, messages);
+    const defaultModels: Record<string, string> = {
+      lovable: "google/gemini-3.5-flash",
+      openai: "gpt-4o-mini",
+      anthropic: "claude-3-5-sonnet-latest",
+      openrouter: "anthropic/claude-3.5-sonnet",
+    };
+    const model = settings?.model || defaultModels[provider] || "google/gemini-3.5-flash";
+
+    let reply: string;
+    if (provider === "anthropic") {
+      reply = await callAnthropic(settings!.ai_api_key!, model, messages);
+    } else if (provider === "openrouter") {
+      reply = await callOpenAICompatible("https://openrouter.ai/api/v1", settings!.ai_api_key!, model, messages, {
+        "HTTP-Referer": "https://lovable.dev",
+        "X-Title": "Nepali Cooding AI",
+      });
+    } else if (provider === "lovable") {
+      const key = process.env.LOVABLE_API_KEY;
+      if (!key) throw new Error("Lovable AI is not configured. Please contact support.");
+      reply = await callOpenAICompatible("https://ai.gateway.lovable.dev/v1", key, model, messages);
+    } else {
+      reply = await callOpenAI(settings!.ai_api_key!, model, messages);
+    }
 
     await supabase.from("messages").insert({
       conversation_id: data.conversationId,
