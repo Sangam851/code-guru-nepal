@@ -48,7 +48,13 @@ function ChatPage() {
         .select("provider, model, ai_api_key")
         .maybeSingle();
       const provider = (s?.provider ?? "lovable") as "lovable" | "openai" | "anthropic" | "openrouter";
-      const model = s?.model ?? "";
+      const defaults: Record<string, string> = {
+        lovable: "google/gemini-2.5-flash",
+        openai: "gpt-4o-mini",
+        anthropic: "claude-sonnet-4-5",
+        openrouter: "google/gemini-2.5-flash",
+      };
+      const model = s?.model || defaults[provider];
       const apiKey = s?.ai_api_key ?? undefined;
       const res = await runTestFn({ data: { provider, model, apiKey } });
       if (res.ok) {
