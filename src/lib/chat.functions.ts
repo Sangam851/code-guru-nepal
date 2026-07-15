@@ -85,6 +85,46 @@ async function callOpenAICompatible(baseURL: string, apiKey: string, model: stri
   return data.choices[0]?.message?.content ?? "";
 }
 
+const TestInput = z.object({
+  provider: z.enum(["lovable", "openai", "anthropic", "openrouter"]),
+  model: z.string().min(1),
+  apiKey: z.string().optional(),
+});
+
+export const testProvider = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => TestInput.parse(data))
+  .handler(async ({ data }) => {
+    const started = Date.now();
+    const messages: Msg[] = [
+      { role: "system", content: "Reply with only the word: pong" },
+      { role: "user", content: "ping" },
+    ];
+    try {
+      let reply = "";
+      if (data.provider === "lovable") {
+        const key = process.env.LOVABLE_API_KEY;
+        if (!key) throw new Error("Lovable AI is not configured.");
+        reply = await callOpenAICompatible("https://ai.gateway.lovable.dev/v1", key, data.model, messages);
+      } else if (data.provider === "anthropic") {
+        if (!data.apiKey) throw new Error("Missing API key.");
+        reply = await callAnthropic(data.apiKey, data.model, messages);
+      } else if (data.provider === "openrouter") {
+        if (!data.apiKey) throw new Error("Missing API key.");
+        reply = await callOpenAICompatible("https://openrouter.ai/api/v1", data.apiKey, data.model, messages, {
+          "HTTP-Referer": "https://lovable.dev",
+          "X-Title": "Nepali Cooding AI",
+        });
+      } else {
+        if (!data.apiKey) throw new Error("Missing API key.");
+        reply = await callOpenAI(data.apiKey, data.model, messages);
+      }
+      return { ok: true, ms: Date.now() - started, reply: reply.trim().slice(0, 200) };
+    } catch (e) {
+      return { ok: false, ms: Date.now() - started, error: (e as Error).message.slice(0, 500) };
+    }
+  });
+
 export const runChat = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => RunInput.parse(data))

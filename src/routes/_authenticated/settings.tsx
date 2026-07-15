@@ -6,9 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Loader2, KeyRound } from "lucide-react";
+import { ArrowLeft, Loader2, KeyRound, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { NepalLogo } from "@/components/NepalLogo";
+import { useServerFn } from "@tanstack/react-start";
+import { testProvider } from "@/lib/chat.functions";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   component: SettingsPage,
@@ -21,6 +23,9 @@ function SettingsPage() {
   const [tavilyKey, setTavilyKey] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const runTest = useServerFn(testProvider);
 
   useEffect(() => {
     (async () => {
@@ -55,6 +60,26 @@ function SettingsPage() {
   const signOut = async () => {
     await supabase.auth.signOut();
     window.location.href = "/auth";
+  };
+
+  const testNow = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await runTest({ data: { provider, model, apiKey: aiKey || undefined } });
+      if (res.ok) {
+        setTestResult({ ok: true, text: `OK (${res.ms}ms) — "${res.reply}"` });
+        toast.success("Provider works");
+      } else {
+        setTestResult({ ok: false, text: res.error ?? "Unknown error" });
+        toast.error("Test failed");
+      }
+    } catch (e) {
+      setTestResult({ ok: false, text: (e as Error).message });
+      toast.error("Test failed");
+    } finally {
+      setTesting(false);
+    }
   };
 
   return (
@@ -148,6 +173,20 @@ function SettingsPage() {
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save settings"}
             </Button>
+
+            <Button
+              onClick={testNow}
+              disabled={testing}
+              variant="secondary"
+              className="w-full h-11"
+            >
+              {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Zap className="h-4 w-4 mr-2" />Test provider & model</>}
+            </Button>
+            {testResult && (
+              <div className={`text-sm rounded-md border p-3 ${testResult.ok ? "border-green-500/40 text-green-400 bg-green-500/5" : "border-destructive/40 text-destructive bg-destructive/5"}`}>
+                {testResult.text}
+              </div>
+            )}
 
             <Button onClick={signOut} variant="outline" className="w-full h-11">Sign out</Button>
           </>
