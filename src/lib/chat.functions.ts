@@ -36,21 +36,40 @@ async function tavilySearch(apiKey: string, query: string) {
   return lines.join("\n");
 }
 
-async function callOpenAI(apiKey: string, model: string, messages: Msg[]) {
+function providerError(label: string, status: number, body: string) {
+  let message = body;
+  try {
+    const parsed = JSON.parse(body) as { error?: { message?: string }; message?: string };
+    message = parsed.error?.message ?? parsed.message ?? body;
+  } catch {
+    // Keep the raw body when the provider did not return JSON.
+  }
+
+  const compact = message.replace(/\s+/g, " ").trim();
+  if (label === "OpenRouter" && status === 402) {
+    return `OpenRouter credit limit: ${compact}. Try google/gemini-2.5-flash, openai/gpt-4o-mini, or add OpenRouter credits.`;
+  }
+  if (label === "OpenRouter" && status === 404) {
+    return `OpenRouter model not found: ${compact}. Check the model ID in Settings.`;
+  }
+  return `${label} error ${status}: ${compact}`;
+}
+
+async function callOpenAI(apiKey: string, model: string, messages: Msg[], maxTokens?: number) {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({ model, messages, temperature: 0.3 }),
+    body: JSON.stringify({ model, messages, temperature: 0.3, ...(maxTokens ? { max_tokens: maxTokens } : {}) }),
   });
-  if (!res.ok) throw new Error(`OpenAI error ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(providerError("OpenAI", res.status, await res.text()));
   const data = (await res.json()) as { choices: Array<{ message: { content: string } }> };
   return data.choices[0]?.message?.content ?? "";
 }
 
-async function callAnthropic(apiKey: string, model: string, messages: Msg[]) {
+async function callAnthropic(apiKey: string, model: string, messages: Msg[], maxTokens = 2048) {
   const system = messages.find((m) => m.role === "system")?.content;
   const rest = messages.filter((m) => m.role !== "system");
   const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -60,9 +79,9 @@ async function callAnthropic(apiKey: string, model: string, messages: Msg[]) {
       "x-api-key": apiKey,
       "anthropic-version": "2023-06-01",
     },
-    body: JSON.stringify({ model, max_tokens: 2048, system, messages: rest }),
+    body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: rest }),
   });
-  if (!res.ok) throw new Error(`Anthropic error ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(providerError("Anthropic", res.status, await res.text()));
   const data = (await res.json()) as { content: Array<{ type: string; text: string }> };
   return data.content
     .filter((b) => b.type === "text")
@@ -70,17 +89,28 @@ async function callAnthropic(apiKey: string, model: string, messages: Msg[]) {
     .join("\n");
 }
 
-async function callOpenAICompatible(baseURL: string, apiKey: string, model: string, messages: Msg[], extraHeaders: Record<string, string> = {}) {
+async function callOpenAICompatible(
+  baseURL: string,
+  apiKey: string,
+  model: string,
+  messages: Msg[],
+  options: { label?: string; extraHeaders?: Record<string, string>; maxTokens?: number } = {},
+) {
   const res = await fetch(`${baseURL}/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
-      ...extraHeaders,
+      ...options.extraHeaders,
     },
-    body: JSON.stringify({ model, messages, temperature: 0.3 }),
+    body: JSON.stringify({
+      model,
+      messages,
+      temperature: 0.3,
+      ...(options.maxTokens ? { max_tokens: options.maxTokens } : {}),
+    }),
   });
-  if (!res.ok) throw new Error(`AI error ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(providerError(options.label ?? "AI", res.status, await res.text()));
   const data = (await res.json()) as { choices: Array<{ message: { content: string } }> };
   return data.choices[0]?.message?.content ?? "";
 }
@@ -105,19 +135,23 @@ export const testProvider = createServerFn({ method: "POST" })
       if (data.provider === "lovable") {
         const key = process.env.LOVABLE_API_KEY;
         if (!key) throw new Error("Lovable AI is not configured.");
-        reply = await callOpenAICompatible("https://ai.gateway.lovable.dev/v1", key, data.model, messages);
+        reply = await callOpenAICompatible("https://ai.gateway.lovable.dev/v1", key, data.model, messages, { label: "Lovable AI", maxTokens: 16 });
       } else if (data.provider === "anthropic") {
         if (!data.apiKey) throw new Error("Missing API key.");
-        reply = await callAnthropic(data.apiKey, data.model, messages);
+        reply = await callAnthropic(data.apiKey, data.model, messages, 16);
       } else if (data.provider === "openrouter") {
         if (!data.apiKey) throw new Error("Missing API key.");
         reply = await callOpenAICompatible("https://openrouter.ai/api/v1", data.apiKey, data.model, messages, {
-          "HTTP-Referer": "https://lovable.dev",
-          "X-Title": "Nepali Cooding AI",
+          label: "OpenRouter",
+          maxTokens: 16,
+          extraHeaders: {
+            "HTTP-Referer": "https://lovable.dev",
+            "X-Title": "Nepali Cooding AI",
+          },
         });
       } else {
         if (!data.apiKey) throw new Error("Missing API key.");
-        reply = await callOpenAI(data.apiKey, data.model, messages);
+        reply = await callOpenAI(data.apiKey, data.model, messages, 16);
       }
       return { ok: true, ms: Date.now() - started, reply: reply.trim().slice(0, 200) };
     } catch (e) {
@@ -177,7 +211,7 @@ export const runChat = createServerFn({ method: "POST" })
       lovable: "google/gemini-3.5-flash",
       openai: "gpt-4o-mini",
       anthropic: "claude-3-5-sonnet-latest",
-      openrouter: "anthropic/claude-sonnet-4.5",
+      openrouter: "google/gemini-2.5-flash",
     };
     const model = settings?.model || defaultModels[provider] || "google/gemini-3.5-flash";
 
@@ -186,13 +220,17 @@ export const runChat = createServerFn({ method: "POST" })
       reply = await callAnthropic(settings!.ai_api_key!, model, messages);
     } else if (provider === "openrouter") {
       reply = await callOpenAICompatible("https://openrouter.ai/api/v1", settings!.ai_api_key!, model, messages, {
-        "HTTP-Referer": "https://lovable.dev",
-        "X-Title": "Nepali Cooding AI",
+        label: "OpenRouter",
+        maxTokens: 1024,
+        extraHeaders: {
+          "HTTP-Referer": "https://lovable.dev",
+          "X-Title": "Nepali Cooding AI",
+        },
       });
     } else if (provider === "lovable") {
       const key = process.env.LOVABLE_API_KEY;
       if (!key) throw new Error("Lovable AI is not configured. Please contact support.");
-      reply = await callOpenAICompatible("https://ai.gateway.lovable.dev/v1", key, model, messages);
+      reply = await callOpenAICompatible("https://ai.gateway.lovable.dev/v1", key, model, messages, { label: "Lovable AI" });
     } else {
       reply = await callOpenAI(settings!.ai_api_key!, model, messages);
     }
