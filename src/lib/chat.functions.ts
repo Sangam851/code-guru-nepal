@@ -115,7 +115,7 @@ export const runChat = createServerFn({ method: "POST" })
     // Optional web search context
     let searchContext = "";
     if (data.webSearch) {
-      if (!settings.tavily_api_key) throw new Error("Add your Tavily API key in Settings to use web search.");
+      if (!settings?.tavily_api_key) throw new Error("Add your Tavily API key in Settings to use web search.");
       try {
         searchContext = await tavilySearch(settings.tavily_api_key, data.userMessage);
       } catch (e) {
