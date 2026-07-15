@@ -2,13 +2,13 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { runChat } from "@/lib/chat.functions";
+import { runChat, testProvider } from "@/lib/chat.functions";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Loader2, Menu, Plus, Send, Settings as SettingsIcon, Globe, Trash2, MessageSquare } from "lucide-react";
+import { Loader2, Menu, Plus, Send, Settings as SettingsIcon, Globe, Trash2, MessageSquare, Zap } from "lucide-react";
 import { NepalLogo } from "@/components/NepalLogo";
 import { LANGUAGES } from "@/lib/languages";
 import ReactMarkdown from "react-markdown";
@@ -25,6 +25,8 @@ type Message = { id: string; role: "user" | "assistant" | "system"; content: str
 
 function ChatPage() {
   const runChatFn = useServerFn(runChat);
+  const runTestFn = useServerFn(testProvider);
+  const [testing, setTesting] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -36,6 +38,36 @@ function ChatPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const activeConv = useMemo(() => conversations.find((c) => c.id === activeId), [conversations, activeId]);
+
+  const testNow = async () => {
+    if (testing) return;
+    setTesting(true);
+    try {
+      const { data: s } = await supabase
+        .from("user_settings")
+        .select("provider, model, ai_api_key")
+        .maybeSingle();
+      const provider = (s?.provider ?? "lovable") as "lovable" | "openai" | "anthropic" | "openrouter";
+      const defaults: Record<string, string> = {
+        lovable: "google/gemini-2.5-flash",
+        openai: "gpt-4o-mini",
+        anthropic: "claude-sonnet-4-5",
+        openrouter: "google/gemini-2.5-flash",
+      };
+      const model = s?.model || defaults[provider];
+      const apiKey = s?.ai_api_key ?? undefined;
+      const res = await runTestFn({ data: { provider, model, apiKey } });
+      if (res.ok) {
+        toast.success(`${provider} • ${model || "default"} OK (${res.ms}ms)`, { description: res.reply });
+      } else {
+        toast.error(`${provider} test failed`, { description: res.error });
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Test failed");
+    } finally {
+      setTesting(false);
+    }
+  };
 
   const loadConversations = async () => {
     const { data } = await supabase
@@ -253,6 +285,16 @@ function ChatPage() {
             <span className="hidden sm:inline">Web</span>
             <Switch checked={webSearch} onCheckedChange={setWebSearch} />
           </label>
+          <Button
+            onClick={testNow}
+            disabled={testing}
+            size="sm"
+            variant="outline"
+            className="h-8 gap-1.5 text-xs"
+          >
+            {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+            Test
+          </Button>
         </div>
         <div className="max-w-2xl mx-auto flex items-end gap-2">
           <Textarea
