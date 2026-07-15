@@ -129,10 +129,8 @@ export const runChat = createServerFn({ method: "POST" })
     });
 
     // Touch conversation, auto-title first exchange
-    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    if ((history ?? []).length === 0) {
-      patch.title = data.userMessage.slice(0, 60);
-    }
+    const patch: { updated_at: string; title?: string } = { updated_at: new Date().toISOString() };
+    if ((history ?? []).length === 0) patch.title = data.userMessage.slice(0, 60);
     await supabase.from("conversations").update(patch).eq("id", data.conversationId);
 
     return { reply };
