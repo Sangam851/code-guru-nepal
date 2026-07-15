@@ -113,7 +113,7 @@ function SettingsPage() {
                       lovable: "google/gemini-3.5-flash",
                       openai: "gpt-4o-mini",
                       anthropic: "claude-3-5-sonnet-latest",
-                      openrouter: "anthropic/claude-sonnet-4.5",
+                      openrouter: "google/gemini-2.5-flash",
                     };
                     setModel(defaults[v] ?? "google/gemini-3.5-flash");
                   }}>
