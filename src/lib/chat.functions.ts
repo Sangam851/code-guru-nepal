@@ -167,17 +167,12 @@ export const runChat = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
 
-    const [{ data: settings, error: sErr }, { data: history, error: hErr }] = await Promise.all([
-      supabase.from("user_settings").select("provider, model, ai_api_key, tavily_api_key").eq("user_id", userId).maybeSingle(),
-      supabase.from("messages").select("role, content").eq("conversation_id", data.conversationId).order("created_at", { ascending: true }),
-    ]);
-    if (sErr) throw new Error(sErr.message);
+    const { data: history, error: hErr } = await supabase
+      .from("messages")
+      .select("role, content")
+      .eq("conversation_id", data.conversationId)
+      .order("created_at", { ascending: true });
     if (hErr) throw new Error(hErr.message);
-    const provider = settings?.provider ?? "lovable";
-    const needsUserKey = provider === "openai" || provider === "anthropic" || provider === "openrouter";
-    if (needsUserKey && !settings?.ai_api_key) {
-      throw new Error("Add your AI API key in Settings first, or switch to the built-in Lovable AI provider.");
-    }
 
     // Persist the user message
     const { error: insErr } = await supabase.from("messages").insert({
@@ -191,8 +186,8 @@ export const runChat = createServerFn({ method: "POST" })
     // Optional web search context
     let searchContext = "";
     if (data.webSearch) {
-      const tavilyKey = settings?.tavily_api_key || process.env.TAVILY_API_KEY;
-      if (!tavilyKey) throw new Error("Web search is not configured. Add a Tavily API key in Settings.");
+      const tavilyKey = process.env.TAVILY_API_KEY;
+      if (!tavilyKey) throw new Error("Web search is not configured.");
       try {
         searchContext = await tavilySearch(tavilyKey, data.userMessage);
       } catch (e) {
@@ -210,33 +205,15 @@ export const runChat = createServerFn({ method: "POST" })
       { role: "user", content: data.userMessage },
     ];
 
-    const defaultModels: Record<string, string> = {
-      lovable: "google/gemini-3.5-flash",
-      openai: "gpt-4o-mini",
-      anthropic: "claude-3-5-sonnet-latest",
-      openrouter: "google/gemini-2.5-flash",
-    };
-    const model = settings?.model || defaultModels[provider] || "google/gemini-3.5-flash";
-
-    let reply: string;
-    if (provider === "anthropic") {
-      reply = await callAnthropic(settings!.ai_api_key!, model, messages);
-    } else if (provider === "openrouter") {
-      reply = await callOpenAICompatible("https://openrouter.ai/api/v1", settings!.ai_api_key!, model, messages, {
-        label: "OpenRouter",
-        maxTokens: 1024,
-        extraHeaders: {
-          "HTTP-Referer": "https://lovable.dev",
-          "X-Title": "Nepali Cooding AI",
-        },
-      });
-    } else if (provider === "lovable") {
-      const key = process.env.LOVABLE_API_KEY;
-      if (!key) throw new Error("Lovable AI is not configured. Please contact support.");
-      reply = await callOpenAICompatible("https://ai.gateway.lovable.dev/v1", key, model, messages, { label: "Lovable AI", auth: "lovable" });
-    } else {
-      reply = await callOpenAI(settings!.ai_api_key!, model, messages);
-    }
+    const key = process.env.LOVABLE_API_KEY;
+    if (!key) throw new Error("AI is not configured. Please contact support.");
+    const reply = await callOpenAICompatible(
+      "https://ai.gateway.lovable.dev/v1",
+      key,
+      "google/gemini-3.5-flash",
+      messages,
+      { label: "Lovable AI", auth: "lovable" },
+    );
 
     await supabase.from("messages").insert({
       conversation_id: data.conversationId,
