@@ -43,24 +43,13 @@ function ChatPage() {
     if (testing) return;
     setTesting(true);
     try {
-      const { data: s } = await supabase
-        .from("user_settings")
-        .select("provider, model, ai_api_key")
-        .maybeSingle();
-      const provider = (s?.provider ?? "lovable") as "lovable" | "openai" | "anthropic" | "openrouter";
-      const defaults: Record<string, string> = {
-        lovable: "google/gemini-2.5-flash",
-        openai: "gpt-4o-mini",
-        anthropic: "claude-sonnet-4-5",
-        openrouter: "google/gemini-2.5-flash",
-      };
-      const model = s?.model || defaults[provider];
-      const apiKey = s?.ai_api_key ?? undefined;
-      const res = await runTestFn({ data: { provider, model, apiKey } });
+      const provider = "lovable" as const;
+      const model = "google/gemini-3.5-flash";
+      const res = await runTestFn({ data: { provider, model } });
       if (res.ok) {
-        toast.success(`${provider} • ${model || "default"} OK (${res.ms}ms)`, { description: res.reply });
+        toast.success(`Lovable AI • ${model} OK (${res.ms}ms)`, { description: res.reply });
       } else {
-        toast.error(`${provider} test failed`, { description: res.error });
+        toast.error("AI test failed", { description: res.error });
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Test failed");
