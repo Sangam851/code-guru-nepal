@@ -11,6 +11,35 @@ const RunInput = z.object({
   userMessage: z.string().min(1),
 });
 
+// Heuristic language detection from a user message. Returns the detected
+// language id (matching src/lib/languages.ts ids) when the message clearly
+// names another language, otherwise null so we keep the chip default.
+const LANG_PATTERNS: Array<{ id: string; re: RegExp }> = [
+  { id: "python", re: /\b(python|py|pandas|numpy|django|flask|pytorch|tensorflow)\b/i },
+  { id: "typescript", re: /\b(typescript|\.ts|tsx)\b/i },
+  { id: "javascript", re: /\b(javascript|js|node\.?js|react|vue|nextjs|express)\b/i },
+  { id: "html", re: /\b(html|css|tailwind|webpage|website|landing page)\b/i },
+  { id: "java", re: /\bjava\b(?!\s*script)/i },
+  { id: "cpp", re: /\b(c\+\+|cpp)\b/i },
+  { id: "csharp", re: /\b(c#|csharp|\.net|dotnet)\b/i },
+  { id: "c", re: /\bc\s+(program|code|language)|\bin\s+c\b/i },
+  { id: "go", re: /\b(golang|\bgo\s+(lang|program|code))\b/i },
+  { id: "rust", re: /\brust\b/i },
+  { id: "ruby", re: /\b(ruby|rails)\b/i },
+  { id: "php", re: /\b(php|laravel)\b/i },
+  { id: "swift", re: /\bswift\b/i },
+  { id: "kotlin", re: /\bkotlin\b/i },
+  { id: "sql", re: /\b(sql|postgres|mysql|sqlite)\b/i },
+  { id: "bash", re: /\b(bash|shell|zsh|\bsh\s+script)\b/i },
+];
+
+function detectLanguage(text: string): string | null {
+  for (const { id, re } of LANG_PATTERNS) {
+    if (re.test(text)) return id;
+  }
+  return null;
+}
+
 async function tavilySearch(apiKey: string, query: string) {
   const res = await fetch("https://api.tavily.com/search", {
     method: "POST",
@@ -34,6 +63,12 @@ async function tavilySearch(apiKey: string, query: string) {
     lines.push(`- ${r.title} (${r.url})\n  ${r.content?.slice(0, 400)}`);
   }
   return lines.join("\n");
+}
+
+function buildSystemPrompt(language: string, searchContext: string) {
+  return `You are Nepali Cooding AI — a premium expert programming assistant made in Nepal. The user's default topic is ${language.toUpperCase()}, but if they ask about another language answer in that language instead. Always: 1) start with a short plain-English explanation, 2) provide clean runnable code in a fenced block with the correct language tag (\`\`\`python, \`\`\`html, etc.), 3) mention edge cases or gotchas, 4) be warm, direct, and concise. Use markdown.${
+    searchContext ? `\n\nLive web search results (use if useful):\n${searchContext}` : ""
+  }`;
 }
 
 function providerError(label: string, status: number, body: string) {
