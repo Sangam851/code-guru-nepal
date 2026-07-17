@@ -2,13 +2,13 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { runChat, testProvider } from "@/lib/chat.functions";
+import { runChat, testProvider, regenerateLast, editUserMessage } from "@/lib/chat.functions";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Loader2, Menu, Plus, Send, Settings as SettingsIcon, Globe, Trash2, MessageSquare, Zap, Copy, Check } from "lucide-react";
+import { Loader2, Menu, Plus, Send, Settings as SettingsIcon, Globe, Trash2, MessageSquare, Zap, Copy, Check, RefreshCw, Pencil, X } from "lucide-react";
 import { NepalLogo } from "@/components/NepalLogo";
 import { LANGUAGES } from "@/lib/languages";
 import ReactMarkdown from "react-markdown";
@@ -26,6 +26,8 @@ type Message = { id: string; role: "user" | "assistant" | "system"; content: str
 function ChatPage() {
   const runChatFn = useServerFn(runChat);
   const runTestFn = useServerFn(testProvider);
+  const regenFn = useServerFn(regenerateLast);
+  const editFn = useServerFn(editUserMessage);
   const [testing, setTesting] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -167,6 +169,32 @@ function ChatPage() {
     }
   };
 
+  const regenerate = async () => {
+    if (!activeId || sending) return;
+    setSending(true);
+    try {
+      await regenFn({ data: { conversationId: activeId, language, webSearch } });
+      setMessages(await loadMessages(activeId));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Regenerate failed");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const editAndResend = async (messageId: string, newContent: string) => {
+    if (!activeId || sending) return;
+    setSending(true);
+    try {
+      await editFn({ data: { conversationId: activeId, messageId, newContent, language, webSearch } });
+      setMessages(await loadMessages(activeId));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Edit failed");
+    } finally {
+      setSending(false);
+    }
+  };
+
   return (
     <div className="flex h-[100dvh] flex-col" style={{ background: "var(--gradient-hero)" }}>
       <header className="flex items-center gap-2 px-3 py-2.5 border-b border-border/50 bg-background/70 backdrop-blur-xl">
@@ -243,9 +271,22 @@ function ChatPage() {
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-4">
         <div className="max-w-2xl mx-auto space-y-4">
           {messages.length === 0 && !sending && <EmptyState onPickLanguage={(l) => { setLanguage(l); setInput(`Give me a beginner-friendly starter program in ${l}.`); }} />}
-          {messages.map((m) => (
-            <MessageBubble key={m.id} message={m} />
-          ))}
+          {messages.map((m, i) => {
+            const isLastAssistant =
+              m.role === "assistant" && i === messages.length - 1;
+            const isLastUser =
+              m.role === "user" &&
+              !messages.slice(i + 1).some((n) => n.role === "user");
+            return (
+              <MessageBubble
+                key={m.id}
+                message={m}
+                onRegenerate={isLastAssistant ? regenerate : undefined}
+                onEdit={isLastUser ? (v) => editAndResend(m.id, v) : undefined}
+                sending={sending}
+              />
+            );
+          })}
           {sending && (
             <div className="flex gap-2 items-center text-muted-foreground text-sm px-1">
               <Loader2 className="h-4 w-4 animate-spin text-primary" />
@@ -339,9 +380,21 @@ function EmptyState({ onPickLanguage }: { onPickLanguage: (id: string) => void }
   );
 }
 
-function MessageBubble({ message }: { message: Message }) {
+function MessageBubble({
+  message,
+  onRegenerate,
+  onEdit,
+  sending,
+}: {
+  message: Message;
+  onRegenerate?: () => void | Promise<void>;
+  onEdit?: (newContent: string) => void | Promise<void>;
+  sending?: boolean;
+}) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(message.content);
   const copyAll = async () => {
     await navigator.clipboard.writeText(message.content);
     setCopied(true);
@@ -351,8 +404,42 @@ function MessageBubble({ message }: { message: Message }) {
   if (isUser) {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed bg-[var(--user-bubble)] text-foreground rounded-br-md whitespace-pre-wrap">
-          {message.content}
+        <div className="flex flex-col items-end gap-1 max-w-[85%]">
+          {editing ? (
+            <div className="w-full rounded-2xl bg-[var(--user-bubble)] p-2">
+              <Textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                rows={3}
+                className="min-h-[80px] bg-transparent border-none focus-visible:ring-0 text-sm resize-none"
+              />
+              <div className="flex justify-end gap-1 mt-1">
+                <Button size="sm" variant="ghost" className="h-7 gap-1" onClick={() => { setEditing(false); setDraft(message.content); }}>
+                  <X className="h-3 w-3" /> Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-7 gap-1"
+                  disabled={sending || !draft.trim() || draft === message.content}
+                  onClick={async () => { setEditing(false); await onEdit?.(draft.trim()); }}
+                >
+                  <RefreshCw className="h-3 w-3" /> Resend
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl px-4 py-2.5 text-sm leading-relaxed bg-[var(--user-bubble)] text-foreground rounded-br-md whitespace-pre-wrap">
+              {message.content}
+            </div>
+          )}
+          {onEdit && !editing && (
+            <button
+              onClick={() => { setDraft(message.content); setEditing(true); }}
+              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition"
+            >
+              <Pencil className="h-3 w-3" /> Edit
+            </button>
+          )}
         </div>
       </div>
     );
@@ -392,13 +479,24 @@ function MessageBubble({ message }: { message: Message }) {
             </div>
           ),
         )}
-        <button
-          onClick={copyAll}
-          className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition"
-        >
-          {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-          {copied ? "Copied" : "Copy answer"}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={copyAll}
+            className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition"
+          >
+            {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+            {copied ? "Copied" : "Copy answer"}
+          </button>
+          {onRegenerate && (
+            <button
+              onClick={onRegenerate}
+              disabled={sending}
+              className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition disabled:opacity-50"
+            >
+              <RefreshCw className="h-3 w-3" /> Regenerate
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
