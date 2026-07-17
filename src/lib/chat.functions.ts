@@ -230,9 +230,10 @@ export const runChat = createServerFn({ method: "POST" })
       }
     }
 
-    const system = `You are Nepali Cooding AI — a premium expert programming assistant made in Nepal. Currently focused on ${data.language.toUpperCase()}, but you can help with any language on request. Always: 1) explain briefly, 2) provide clean runnable code in fenced blocks with the correct language tag, 3) mention edge cases, 4) be warm and concise. Use markdown.${
-      searchContext ? `\n\nLive web search results (use if useful):\n${searchContext}` : ""
-    }`;
+    // If the user explicitly names another language, follow that instead of the chip.
+    const detected = detectLanguage(data.userMessage);
+    const effectiveLang = detected ?? data.language;
+    const system = buildSystemPrompt(effectiveLang, searchContext);
 
     const messages: Msg[] = [
       { role: "system", content: system },
@@ -261,6 +262,158 @@ export const runChat = createServerFn({ method: "POST" })
     const patch: { updated_at: string; title?: string } = { updated_at: new Date().toISOString() };
     if ((history ?? []).length === 0) patch.title = data.userMessage.slice(0, 60);
     await supabase.from("conversations").update(patch).eq("id", data.conversationId);
+
+    return { reply, language: effectiveLang, detected: detected !== null };
+  });
+
+// Regenerate: delete the last assistant reply for this conversation and
+// call the model again with the remaining history.
+const RegenInput = z.object({
+  conversationId: z.string().uuid(),
+  language: z.string().min(1).max(40),
+  webSearch: z.boolean().default(false),
+});
+
+export const regenerateLast = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => RegenInput.parse(data))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+
+    const { data: history, error: hErr } = await supabase
+      .from("messages")
+      .select("id, role, content, created_at")
+      .eq("conversation_id", data.conversationId)
+      .order("created_at", { ascending: true });
+    if (hErr) throw new Error(hErr.message);
+    const rows = history ?? [];
+
+    // Drop trailing assistant messages so we regenerate from the last user turn.
+    let cutIdx = rows.length;
+    while (cutIdx > 0 && rows[cutIdx - 1].role === "assistant") cutIdx -= 1;
+    const toDelete = rows.slice(cutIdx).map((r) => r.id);
+    if (toDelete.length > 0) {
+      await supabase.from("messages").delete().in("id", toDelete);
+    }
+    const remaining = rows.slice(0, cutIdx);
+    const lastUser = [...remaining].reverse().find((r) => r.role === "user");
+    if (!lastUser) throw new Error("No user message to regenerate.");
+
+    let searchContext = "";
+    if (data.webSearch) {
+      const tavilyKey = process.env.TAVILY_API_KEY;
+      if (tavilyKey) {
+        try { searchContext = await tavilySearch(tavilyKey, lastUser.content); }
+        catch (e) { searchContext = `Web search failed: ${(e as Error).message}`; }
+      }
+    }
+    const detected = detectLanguage(lastUser.content);
+    const effectiveLang = detected ?? data.language;
+    const system = buildSystemPrompt(effectiveLang, searchContext);
+    const messages: Msg[] = [
+      { role: "system", content: system },
+      ...(remaining.map((r) => ({ role: r.role, content: r.content })) as Msg[]),
+    ];
+
+    const key = process.env.LOVABLE_API_KEY;
+    if (!key) throw new Error("AI is not configured.");
+    const reply = await callOpenAICompatible(
+      "https://ai.gateway.lovable.dev/v1",
+      key,
+      "google/gemini-3.5-flash",
+      messages,
+      { label: "Lovable AI", auth: "lovable" },
+    );
+
+    await supabase.from("messages").insert({
+      conversation_id: data.conversationId,
+      user_id: userId,
+      role: "assistant",
+      content: reply,
+    });
+    await supabase
+      .from("conversations")
+      .update({ updated_at: new Date().toISOString() })
+      .eq("id", data.conversationId);
+
+    return { reply };
+  });
+
+// Edit a prior user message: rewrite its content, drop every message that
+// followed it, then regenerate the assistant reply.
+const EditInput = z.object({
+  conversationId: z.string().uuid(),
+  messageId: z.string().uuid(),
+  newContent: z.string().min(1),
+  language: z.string().min(1).max(40),
+  webSearch: z.boolean().default(false),
+});
+
+export const editUserMessage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => EditInput.parse(data))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+
+    const { data: history, error: hErr } = await supabase
+      .from("messages")
+      .select("id, role, content, created_at")
+      .eq("conversation_id", data.conversationId)
+      .order("created_at", { ascending: true });
+    if (hErr) throw new Error(hErr.message);
+    const rows = history ?? [];
+    const idx = rows.findIndex((r) => r.id === data.messageId);
+    if (idx < 0) throw new Error("Message not found.");
+    if (rows[idx].role !== "user") throw new Error("Only user messages can be edited.");
+
+    const toDelete = rows.slice(idx + 1).map((r) => r.id);
+    if (toDelete.length > 0) {
+      await supabase.from("messages").delete().in("id", toDelete);
+    }
+    await supabase
+      .from("messages")
+      .update({ content: data.newContent })
+      .eq("id", data.messageId);
+
+    const priorRows = rows.slice(0, idx);
+
+    let searchContext = "";
+    if (data.webSearch) {
+      const tavilyKey = process.env.TAVILY_API_KEY;
+      if (tavilyKey) {
+        try { searchContext = await tavilySearch(tavilyKey, data.newContent); }
+        catch (e) { searchContext = `Web search failed: ${(e as Error).message}`; }
+      }
+    }
+    const detected = detectLanguage(data.newContent);
+    const effectiveLang = detected ?? data.language;
+    const system = buildSystemPrompt(effectiveLang, searchContext);
+    const messages: Msg[] = [
+      { role: "system", content: system },
+      ...(priorRows.map((r) => ({ role: r.role, content: r.content })) as Msg[]),
+      { role: "user", content: data.newContent },
+    ];
+
+    const key = process.env.LOVABLE_API_KEY;
+    if (!key) throw new Error("AI is not configured.");
+    const reply = await callOpenAICompatible(
+      "https://ai.gateway.lovable.dev/v1",
+      key,
+      "google/gemini-3.5-flash",
+      messages,
+      { label: "Lovable AI", auth: "lovable" },
+    );
+
+    await supabase.from("messages").insert({
+      conversation_id: data.conversationId,
+      user_id: userId,
+      role: "assistant",
+      content: reply,
+    });
+    await supabase
+      .from("conversations")
+      .update({ updated_at: new Date().toISOString() })
+      .eq("id", data.conversationId);
 
     return { reply };
   });
