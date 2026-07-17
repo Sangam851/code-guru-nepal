@@ -380,9 +380,21 @@ function EmptyState({ onPickLanguage }: { onPickLanguage: (id: string) => void }
   );
 }
 
-function MessageBubble({ message }: { message: Message }) {
+function MessageBubble({
+  message,
+  onRegenerate,
+  onEdit,
+  sending,
+}: {
+  message: Message;
+  onRegenerate?: () => void | Promise<void>;
+  onEdit?: (newContent: string) => void | Promise<void>;
+  sending?: boolean;
+}) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(message.content);
   const copyAll = async () => {
     await navigator.clipboard.writeText(message.content);
     setCopied(true);
@@ -392,8 +404,42 @@ function MessageBubble({ message }: { message: Message }) {
   if (isUser) {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed bg-[var(--user-bubble)] text-foreground rounded-br-md whitespace-pre-wrap">
-          {message.content}
+        <div className="flex flex-col items-end gap-1 max-w-[85%]">
+          {editing ? (
+            <div className="w-full rounded-2xl bg-[var(--user-bubble)] p-2">
+              <Textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                rows={3}
+                className="min-h-[80px] bg-transparent border-none focus-visible:ring-0 text-sm resize-none"
+              />
+              <div className="flex justify-end gap-1 mt-1">
+                <Button size="sm" variant="ghost" className="h-7 gap-1" onClick={() => { setEditing(false); setDraft(message.content); }}>
+                  <X className="h-3 w-3" /> Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-7 gap-1"
+                  disabled={sending || !draft.trim() || draft === message.content}
+                  onClick={async () => { setEditing(false); await onEdit?.(draft.trim()); }}
+                >
+                  <RefreshCw className="h-3 w-3" /> Resend
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl px-4 py-2.5 text-sm leading-relaxed bg-[var(--user-bubble)] text-foreground rounded-br-md whitespace-pre-wrap">
+              {message.content}
+            </div>
+          )}
+          {onEdit && !editing && (
+            <button
+              onClick={() => { setDraft(message.content); setEditing(true); }}
+              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition"
+            >
+              <Pencil className="h-3 w-3" /> Edit
+            </button>
+          )}
         </div>
       </div>
     );
@@ -433,13 +479,24 @@ function MessageBubble({ message }: { message: Message }) {
             </div>
           ),
         )}
-        <button
-          onClick={copyAll}
-          className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition"
-        >
-          {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-          {copied ? "Copied" : "Copy answer"}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={copyAll}
+            className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition"
+          >
+            {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+            {copied ? "Copied" : "Copy answer"}
+          </button>
+          {onRegenerate && (
+            <button
+              onClick={onRegenerate}
+              disabled={sending}
+              className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition disabled:opacity-50"
+            >
+              <RefreshCw className="h-3 w-3" /> Regenerate
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
