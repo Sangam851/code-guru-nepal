@@ -2,13 +2,29 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 
-type Msg = { role: "system" | "user" | "assistant"; content: string };
+type ContentBlock =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } }
+  | { type: "file"; file: { filename: string; file_data: string } };
+type Msg = {
+  role: "system" | "user" | "assistant";
+  content: string | ContentBlock[];
+};
 
 const RunInput = z.object({
   conversationId: z.string().uuid(),
   language: z.string().min(1).max(40),
   webSearch: z.boolean().default(false),
   userMessage: z.string().min(1),
+  attachment: z
+    .object({
+      kind: z.enum(["image", "file", "text"]),
+      filename: z.string().max(200).optional(),
+      mime: z.string().max(120).optional(),
+      dataUrl: z.string().max(20_000_000).optional(),
+      text: z.string().max(500_000).optional(),
+    })
+    .optional(),
 });
 
 // Heuristic language detection from a user message. Returns the detected
@@ -210,11 +226,14 @@ export const runChat = createServerFn({ method: "POST" })
     if (hErr) throw new Error(hErr.message);
 
     // Persist the user message
+    const attachmentNote = data.attachment
+      ? `\n\n[Attachment: ${data.attachment.filename ?? data.attachment.kind}]`
+      : "";
     const { error: insErr } = await supabase.from("messages").insert({
       conversation_id: data.conversationId,
       user_id: userId,
       role: "user",
-      content: data.userMessage,
+      content: data.userMessage + attachmentNote,
     });
     if (insErr) throw new Error(insErr.message);
 
@@ -235,10 +254,34 @@ export const runChat = createServerFn({ method: "POST" })
     const effectiveLang = detected ?? data.language;
     const system = buildSystemPrompt(effectiveLang, searchContext);
 
+    // Build the last user turn. When there's an attachment, use multimodal
+    // content blocks; inline extracted text for parsed files.
+    let lastUserContent: string | ContentBlock[] = data.userMessage;
+    if (data.attachment) {
+      const a = data.attachment;
+      const blocks: ContentBlock[] = [
+        { type: "text", text: data.userMessage || "Please analyze this attachment." },
+      ];
+      if (a.kind === "image" && a.dataUrl) {
+        blocks.push({ type: "image_url", image_url: { url: a.dataUrl } });
+      } else if (a.kind === "file" && a.dataUrl) {
+        blocks.push({
+          type: "file",
+          file: { filename: a.filename ?? "file", file_data: a.dataUrl },
+        });
+      } else if (a.kind === "text" && a.text) {
+        blocks[0] = {
+          type: "text",
+          text: `${data.userMessage}\n\n--- Attached file: ${a.filename ?? "file"} ---\n${a.text.slice(0, 200_000)}`,
+        };
+      }
+      lastUserContent = blocks;
+    }
+
     const messages: Msg[] = [
       { role: "system", content: system },
       ...((history ?? []) as Msg[]),
-      { role: "user", content: data.userMessage },
+      { role: "user", content: lastUserContent },
     ];
 
     const key = process.env.LOVABLE_API_KEY;
@@ -337,6 +380,44 @@ export const regenerateLast = createServerFn({ method: "POST" })
       .eq("id", data.conversationId);
 
     return { reply };
+  });
+
+// Speech-to-text: accepts a base64-encoded audio recording (WAV recommended)
+// and returns the transcript via the Lovable AI STT endpoint.
+const TranscribeInput = z.object({
+  audioBase64: z.string().min(100).max(30_000_000),
+  mime: z.string().max(80).default("audio/wav"),
+});
+
+export const transcribeAudio = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => TranscribeInput.parse(data))
+  .handler(async ({ data }) => {
+    const key = process.env.LOVABLE_API_KEY;
+    if (!key) throw new Error("Speech-to-text is not configured.");
+    const bin = Buffer.from(data.audioBase64, "base64");
+    const extMap: Record<string, string> = {
+      "audio/wav": "wav",
+      "audio/wave": "wav",
+      "audio/x-wav": "wav",
+      "audio/mpeg": "mp3",
+      "audio/mp3": "mp3",
+      "audio/webm": "webm",
+      "audio/mp4": "m4a",
+      "audio/x-m4a": "m4a",
+    };
+    const ext = extMap[data.mime] ?? "wav";
+    const form = new FormData();
+    form.append("model", "openai/gpt-4o-mini-transcribe");
+    form.append("file", new Blob([bin], { type: data.mime }), `recording.${ext}`);
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}` },
+      body: form,
+    });
+    if (!res.ok) throw new Error(providerError("Lovable STT", res.status, await res.text()));
+    const json = (await res.json()) as { text?: string };
+    return { text: (json.text ?? "").trim() };
   });
 
 // Edit a prior user message: rewrite its content, drop every message that

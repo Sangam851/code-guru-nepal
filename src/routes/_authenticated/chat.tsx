@@ -2,13 +2,13 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { runChat, testProvider, regenerateLast, editUserMessage } from "@/lib/chat.functions";
+import { runChat, testProvider, regenerateLast, editUserMessage, transcribeAudio } from "@/lib/chat.functions";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Loader2, Menu, Plus, Send, Settings as SettingsIcon, Globe, Trash2, MessageSquare, Zap, Copy, Check, RefreshCw, Pencil, X } from "lucide-react";
+import { Loader2, Menu, Plus, Send, Settings as SettingsIcon, Globe, Trash2, MessageSquare, Zap, Copy, Check, RefreshCw, Pencil, X, Mic, Camera, Paperclip, Square, FileText, Image as ImageIcon } from "lucide-react";
 import { NepalLogo } from "@/components/NepalLogo";
 import { LANGUAGES } from "@/lib/languages";
 import ReactMarkdown from "react-markdown";
@@ -28,6 +28,7 @@ function ChatPage() {
   const runTestFn = useServerFn(testProvider);
   const regenFn = useServerFn(regenerateLast);
   const editFn = useServerFn(editUserMessage);
+  const transcribeFn = useServerFn(transcribeAudio);
   const [testing, setTesting] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -38,6 +39,19 @@ function ChatPage() {
   const [sending, setSending] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const [attachment, setAttachment] = useState<null | {
+    kind: "image" | "file" | "text";
+    filename: string;
+    mime: string;
+    dataUrl?: string;
+    text?: string;
+    previewUrl?: string;
+  }>(null);
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const recorderRef = useRef<{ stream: MediaStream; ctx: AudioContext; chunks: Float32Array[]; node: ScriptProcessorNode; source: MediaStreamAudioSourceNode } | null>(null);
 
   const activeConv = useMemo(() => conversations.find((c) => c.id === activeId), [conversations, activeId]);
 
@@ -132,7 +146,7 @@ function ChatPage() {
 
   const send = async () => {
     const text = input.trim();
-    if (!text || sending) return;
+    if ((!text && !attachment) || sending) return;
     let convId = activeId;
     if (!convId) {
       await startNew();
@@ -150,14 +164,32 @@ function ChatPage() {
     const optimistic: Message = {
       id: `temp-${Date.now()}`,
       role: "user",
-      content: text,
+      content: text + (attachment ? `\n\n[Attachment: ${attachment.filename}]` : ""),
       created_at: new Date().toISOString(),
     };
     setMessages((m) => [...m, optimistic]);
+    const sentAttachment = attachment;
     setInput("");
+    setAttachment(null);
     setSending(true);
     try {
-      await runChatFn({ data: { conversationId: convId, language, webSearch, userMessage: text } });
+      await runChatFn({
+        data: {
+          conversationId: convId,
+          language,
+          webSearch,
+          userMessage: text || "Please analyze the attached file.",
+          attachment: sentAttachment
+            ? {
+                kind: sentAttachment.kind,
+                filename: sentAttachment.filename,
+                mime: sentAttachment.mime,
+                dataUrl: sentAttachment.dataUrl,
+                text: sentAttachment.text,
+              }
+            : undefined,
+        },
+      });
       const [msgs, convs] = await Promise.all([loadMessages(convId), loadConversations()]);
       setMessages(msgs);
       setConversations(convs);
@@ -192,6 +224,91 @@ function ChatPage() {
       toast.error(e instanceof Error ? e.message : "Edit failed");
     } finally {
       setSending(false);
+    }
+  };
+
+  const readFileAsDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result as string);
+      r.onerror = () => reject(r.error);
+      r.readAsDataURL(file);
+    });
+  const readFileAsText = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result as string);
+      r.onerror = () => reject(r.error);
+      r.readAsText(file);
+    });
+
+  const TEXT_EXT = /\.(txt|md|json|csv|tsv|yaml|yml|toml|xml|html|css|scss|js|jsx|ts|tsx|py|rb|go|rs|java|kt|swift|c|h|cpp|hpp|cs|php|sh|bash|zsh|sql|log|ini|env)$/i;
+
+  const handleFilePicked = async (file: File | null | undefined) => {
+    if (!file) return;
+    const MAX = 15 * 1024 * 1024;
+    if (file.size > MAX) return toast.error("File is larger than 15 MB.");
+    try {
+      if (file.type.startsWith("image/")) {
+        const dataUrl = await readFileAsDataUrl(file);
+        setAttachment({ kind: "image", filename: file.name, mime: file.type, dataUrl, previewUrl: dataUrl });
+      } else if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) {
+        const dataUrl = await readFileAsDataUrl(file);
+        setAttachment({ kind: "file", filename: file.name, mime: "application/pdf", dataUrl });
+      } else if (TEXT_EXT.test(file.name) || file.type.startsWith("text/")) {
+        const text = await readFileAsText(file);
+        setAttachment({ kind: "text", filename: file.name, mime: file.type || "text/plain", text });
+      } else {
+        // Fall back to sending as a file blob (works for DOCX etc via Gemini)
+        const dataUrl = await readFileAsDataUrl(file);
+        setAttachment({ kind: "file", filename: file.name, mime: file.type || "application/octet-stream", dataUrl });
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to read file");
+    }
+  };
+
+  const startRecording = async () => {
+    if (recording || transcribing) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const ctx = new AudioCtx();
+      const source = ctx.createMediaStreamSource(stream);
+      const node = ctx.createScriptProcessor(4096, 1, 1);
+      const chunks: Float32Array[] = [];
+      node.onaudioprocess = (e) => chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+      source.connect(node);
+      node.connect(ctx.destination);
+      recorderRef.current = { stream, ctx, chunks, node, source };
+      setRecording(true);
+    } catch {
+      toast.error("Microphone access denied.");
+    }
+  };
+
+  const stopRecording = async () => {
+    const rec = recorderRef.current;
+    if (!rec) return;
+    setRecording(false);
+    rec.stream.getTracks().forEach((t) => t.stop());
+    rec.node.disconnect();
+    rec.source.disconnect();
+    const sampleRate = rec.ctx.sampleRate;
+    await rec.ctx.close();
+    recorderRef.current = null;
+    const wav = encodeWav(rec.chunks, sampleRate);
+    if (wav.byteLength < 2048) return toast.error("Recording was empty — try again.");
+    setTranscribing(true);
+    try {
+      const b64 = await blobToBase64(new Blob([wav], { type: "audio/wav" }));
+      const res = await transcribeFn({ data: { audioBase64: b64, mime: "audio/wav" } });
+      if (res.text) setInput((v) => (v ? v + " " : "") + res.text);
+      else toast.error("Couldn't hear anything — try again.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Transcription failed");
+    } finally {
+      setTranscribing(false);
     }
   };
 
@@ -327,6 +444,29 @@ function ChatPage() {
           </Button>
         </div>
         <div className="max-w-2xl mx-auto flex items-end gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            accept="image/*,application/pdf,.txt,.md,.json,.csv,.yaml,.yml,.xml,.html,.css,.js,.jsx,.ts,.tsx,.py,.rb,.go,.rs,.java,.kt,.swift,.c,.h,.cpp,.hpp,.cs,.php,.sh,.sql,.docx"
+            onChange={(e) => { void handleFilePicked(e.target.files?.[0]); e.currentTarget.value = ""; }}
+          />
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(e) => { void handleFilePicked(e.target.files?.[0]); e.currentTarget.value = ""; }}
+          />
+          <div className="flex flex-col gap-1">
+            <Button size="icon" variant="ghost" className="h-9 w-9" title="Attach file" onClick={() => fileInputRef.current?.click()}>
+              <Paperclip className="h-4 w-4" />
+            </Button>
+            <Button size="icon" variant="ghost" className="h-9 w-9" title="Camera" onClick={() => cameraInputRef.current?.click()}>
+              <Camera className="h-4 w-4" />
+            </Button>
+          </div>
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -341,14 +481,45 @@ function ChatPage() {
             className="min-h-[48px] max-h-40 resize-none bg-input/60 border-border/70"
           />
           <Button
+            onClick={recording ? stopRecording : startRecording}
+            disabled={transcribing}
+            size="icon"
+            variant={recording ? "destructive" : "ghost"}
+            className="h-12 w-12 shrink-0"
+            title={recording ? "Stop recording" : "Voice input"}
+          >
+            {transcribing ? <Loader2 className="h-4 w-4 animate-spin" /> : recording ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+          </Button>
+          <Button
             onClick={send}
-            disabled={sending || !input.trim()}
+            disabled={sending || (!input.trim() && !attachment)}
             size="icon"
             className="h-12 w-12 shrink-0 bg-[image:var(--gradient-primary)] text-primary-foreground shadow-[var(--shadow-glow)]"
           >
             {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>
         </div>
+        {attachment && (
+          <div className="max-w-2xl mx-auto">
+            <div className="inline-flex items-center gap-2 rounded-lg border border-border/60 bg-card/70 px-2 py-1.5 text-xs">
+              {attachment.kind === "image" && attachment.previewUrl ? (
+                <img src={attachment.previewUrl} alt="" className="h-8 w-8 rounded object-cover" />
+              ) : attachment.kind === "image" ? (
+                <ImageIcon className="h-4 w-4 text-primary" />
+              ) : (
+                <FileText className="h-4 w-4 text-primary" />
+              )}
+              <span className="max-w-[220px] truncate">{attachment.filename}</span>
+              <button
+                onClick={() => setAttachment(null)}
+                className="text-muted-foreground hover:text-destructive"
+                aria-label="Remove attachment"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -519,4 +690,49 @@ function splitSegments(content: string): Segment[] {
   if (tail) out.push({ type: "text", value: tail });
   if (out.length === 0) out.push({ type: "text", value: content });
   return out;
+}
+
+// Downsample+encode Float32 PCM chunks into a mono 16-bit WAV Blob-ready buffer.
+function encodeWav(chunks: Float32Array[], sampleRate: number, target = 16000): ArrayBuffer {
+  const total = chunks.reduce((n, c) => n + c.length, 0);
+  const merged = new Float32Array(total);
+  let o = 0;
+  for (const c of chunks) { merged.set(c, o); o += c.length; }
+  const ratio = sampleRate / target;
+  const outLen = Math.floor(merged.length / ratio);
+  const pcm = new Int16Array(outLen);
+  for (let i = 0; i < outLen; i++) {
+    const s = merged[Math.floor(i * ratio)] ?? 0;
+    pcm[i] = Math.max(-1, Math.min(1, s)) * 0x7fff;
+  }
+  const buf = new ArrayBuffer(44 + pcm.byteLength);
+  const view = new DataView(buf);
+  const writeStr = (off: number, s: string) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
+  writeStr(0, "RIFF");
+  view.setUint32(4, 36 + pcm.byteLength, true);
+  writeStr(8, "WAVE");
+  writeStr(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, target, true);
+  view.setUint32(28, target * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, "data");
+  view.setUint32(40, pcm.byteLength, true);
+  new Int16Array(buf, 44).set(pcm);
+  return buf;
+}
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => {
+      const s = r.result as string;
+      resolve(s.slice(s.indexOf(",") + 1));
+    };
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(blob);
+  });
 }
