@@ -9,6 +9,15 @@ const RunInput = z.object({
   language: z.string().min(1).max(40),
   webSearch: z.boolean().default(false),
   userMessage: z.string().min(1),
+  attachment: z
+    .object({
+      kind: z.enum(["image", "file", "text"]),
+      filename: z.string().max(200).optional(),
+      mime: z.string().max(120).optional(),
+      dataUrl: z.string().max(20_000_000).optional(),
+      text: z.string().max(500_000).optional(),
+    })
+    .optional(),
 });
 
 // Heuristic language detection from a user message. Returns the detected
