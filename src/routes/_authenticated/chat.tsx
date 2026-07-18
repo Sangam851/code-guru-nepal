@@ -227,6 +227,91 @@ function ChatPage() {
     }
   };
 
+  const readFileAsDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result as string);
+      r.onerror = () => reject(r.error);
+      r.readAsDataURL(file);
+    });
+  const readFileAsText = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result as string);
+      r.onerror = () => reject(r.error);
+      r.readAsText(file);
+    });
+
+  const TEXT_EXT = /\.(txt|md|json|csv|tsv|yaml|yml|toml|xml|html|css|scss|js|jsx|ts|tsx|py|rb|go|rs|java|kt|swift|c|h|cpp|hpp|cs|php|sh|bash|zsh|sql|log|ini|env)$/i;
+
+  const handleFilePicked = async (file: File | null | undefined) => {
+    if (!file) return;
+    const MAX = 15 * 1024 * 1024;
+    if (file.size > MAX) return toast.error("File is larger than 15 MB.");
+    try {
+      if (file.type.startsWith("image/")) {
+        const dataUrl = await readFileAsDataUrl(file);
+        setAttachment({ kind: "image", filename: file.name, mime: file.type, dataUrl, previewUrl: dataUrl });
+      } else if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) {
+        const dataUrl = await readFileAsDataUrl(file);
+        setAttachment({ kind: "file", filename: file.name, mime: "application/pdf", dataUrl });
+      } else if (TEXT_EXT.test(file.name) || file.type.startsWith("text/")) {
+        const text = await readFileAsText(file);
+        setAttachment({ kind: "text", filename: file.name, mime: file.type || "text/plain", text });
+      } else {
+        // Fall back to sending as a file blob (works for DOCX etc via Gemini)
+        const dataUrl = await readFileAsDataUrl(file);
+        setAttachment({ kind: "file", filename: file.name, mime: file.type || "application/octet-stream", dataUrl });
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to read file");
+    }
+  };
+
+  const startRecording = async () => {
+    if (recording || transcribing) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const ctx = new AudioCtx();
+      const source = ctx.createMediaStreamSource(stream);
+      const node = ctx.createScriptProcessor(4096, 1, 1);
+      const chunks: Float32Array[] = [];
+      node.onaudioprocess = (e) => chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+      source.connect(node);
+      node.connect(ctx.destination);
+      recorderRef.current = { stream, ctx, chunks, node, source };
+      setRecording(true);
+    } catch {
+      toast.error("Microphone access denied.");
+    }
+  };
+
+  const stopRecording = async () => {
+    const rec = recorderRef.current;
+    if (!rec) return;
+    setRecording(false);
+    rec.stream.getTracks().forEach((t) => t.stop());
+    rec.node.disconnect();
+    rec.source.disconnect();
+    const sampleRate = rec.ctx.sampleRate;
+    await rec.ctx.close();
+    recorderRef.current = null;
+    const wav = encodeWav(rec.chunks, sampleRate);
+    if (wav.byteLength < 2048) return toast.error("Recording was empty — try again.");
+    setTranscribing(true);
+    try {
+      const b64 = await blobToBase64(new Blob([wav], { type: "audio/wav" }));
+      const res = await transcribeFn({ data: { audioBase64: b64, mime: "audio/wav" } });
+      if (res.text) setInput((v) => (v ? v + " " : "") + res.text);
+      else toast.error("Couldn't hear anything — try again.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Transcription failed");
+    } finally {
+      setTranscribing(false);
+    }
+  };
+
   return (
     <div className="flex h-[100dvh] flex-col" style={{ background: "var(--gradient-hero)" }}>
       <header className="flex items-center gap-2 px-3 py-2.5 border-b border-border/50 bg-background/70 backdrop-blur-xl">
