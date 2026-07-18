@@ -2,7 +2,14 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 
-type Msg = { role: "system" | "user" | "assistant"; content: string };
+type ContentBlock =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } }
+  | { type: "file"; file: { filename: string; file_data: string } };
+type Msg = {
+  role: "system" | "user" | "assistant";
+  content: string | ContentBlock[];
+};
 
 const RunInput = z.object({
   conversationId: z.string().uuid(),
