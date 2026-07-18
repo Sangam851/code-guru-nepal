@@ -382,6 +382,44 @@ export const regenerateLast = createServerFn({ method: "POST" })
     return { reply };
   });
 
+// Speech-to-text: accepts a base64-encoded audio recording (WAV recommended)
+// and returns the transcript via the Lovable AI STT endpoint.
+const TranscribeInput = z.object({
+  audioBase64: z.string().min(100).max(30_000_000),
+  mime: z.string().max(80).default("audio/wav"),
+});
+
+export const transcribeAudio = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => TranscribeInput.parse(data))
+  .handler(async ({ data }) => {
+    const key = process.env.LOVABLE_API_KEY;
+    if (!key) throw new Error("Speech-to-text is not configured.");
+    const bin = Buffer.from(data.audioBase64, "base64");
+    const extMap: Record<string, string> = {
+      "audio/wav": "wav",
+      "audio/wave": "wav",
+      "audio/x-wav": "wav",
+      "audio/mpeg": "mp3",
+      "audio/mp3": "mp3",
+      "audio/webm": "webm",
+      "audio/mp4": "m4a",
+      "audio/x-m4a": "m4a",
+    };
+    const ext = extMap[data.mime] ?? "wav";
+    const form = new FormData();
+    form.append("model", "openai/gpt-4o-mini-transcribe");
+    form.append("file", new Blob([bin], { type: data.mime }), `recording.${ext}`);
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}` },
+      body: form,
+    });
+    if (!res.ok) throw new Error(providerError("Lovable STT", res.status, await res.text()));
+    const json = (await res.json()) as { text?: string };
+    return { text: (json.text ?? "").trim() };
+  });
+
 // Edit a prior user message: rewrite its content, drop every message that
 // followed it, then regenerate the assistant reply.
 const EditInput = z.object({
