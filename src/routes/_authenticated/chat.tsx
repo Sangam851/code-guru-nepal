@@ -2,13 +2,13 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { runChat, testProvider, regenerateLast, editUserMessage } from "@/lib/chat.functions";
+import { runChat, testProvider, regenerateLast, editUserMessage, transcribeAudio } from "@/lib/chat.functions";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Loader2, Menu, Plus, Send, Settings as SettingsIcon, Globe, Trash2, MessageSquare, Zap, Copy, Check, RefreshCw, Pencil, X } from "lucide-react";
+import { Loader2, Menu, Plus, Send, Settings as SettingsIcon, Globe, Trash2, MessageSquare, Zap, Copy, Check, RefreshCw, Pencil, X, Mic, Camera, Paperclip, Square, FileText, Image as ImageIcon } from "lucide-react";
 import { NepalLogo } from "@/components/NepalLogo";
 import { LANGUAGES } from "@/lib/languages";
 import ReactMarkdown from "react-markdown";
@@ -28,6 +28,7 @@ function ChatPage() {
   const runTestFn = useServerFn(testProvider);
   const regenFn = useServerFn(regenerateLast);
   const editFn = useServerFn(editUserMessage);
+  const transcribeFn = useServerFn(transcribeAudio);
   const [testing, setTesting] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -38,6 +39,19 @@ function ChatPage() {
   const [sending, setSending] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const [attachment, setAttachment] = useState<null | {
+    kind: "image" | "file" | "text";
+    filename: string;
+    mime: string;
+    dataUrl?: string;
+    text?: string;
+    previewUrl?: string;
+  }>(null);
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const recorderRef = useRef<{ stream: MediaStream; ctx: AudioContext; chunks: Float32Array[]; node: ScriptProcessorNode; source: MediaStreamAudioSourceNode } | null>(null);
 
   const activeConv = useMemo(() => conversations.find((c) => c.id === activeId), [conversations, activeId]);
 
@@ -132,7 +146,7 @@ function ChatPage() {
 
   const send = async () => {
     const text = input.trim();
-    if (!text || sending) return;
+    if ((!text && !attachment) || sending) return;
     let convId = activeId;
     if (!convId) {
       await startNew();
@@ -150,14 +164,32 @@ function ChatPage() {
     const optimistic: Message = {
       id: `temp-${Date.now()}`,
       role: "user",
-      content: text,
+      content: text + (attachment ? `\n\n[Attachment: ${attachment.filename}]` : ""),
       created_at: new Date().toISOString(),
     };
     setMessages((m) => [...m, optimistic]);
+    const sentAttachment = attachment;
     setInput("");
+    setAttachment(null);
     setSending(true);
     try {
-      await runChatFn({ data: { conversationId: convId, language, webSearch, userMessage: text } });
+      await runChatFn({
+        data: {
+          conversationId: convId,
+          language,
+          webSearch,
+          userMessage: text || "Please analyze the attached file.",
+          attachment: sentAttachment
+            ? {
+                kind: sentAttachment.kind,
+                filename: sentAttachment.filename,
+                mime: sentAttachment.mime,
+                dataUrl: sentAttachment.dataUrl,
+                text: sentAttachment.text,
+              }
+            : undefined,
+        },
+      });
       const [msgs, convs] = await Promise.all([loadMessages(convId), loadConversations()]);
       setMessages(msgs);
       setConversations(convs);
