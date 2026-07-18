@@ -226,11 +226,14 @@ export const runChat = createServerFn({ method: "POST" })
     if (hErr) throw new Error(hErr.message);
 
     // Persist the user message
+    const attachmentNote = data.attachment
+      ? `\n\n[Attachment: ${data.attachment.filename ?? data.attachment.kind}]`
+      : "";
     const { error: insErr } = await supabase.from("messages").insert({
       conversation_id: data.conversationId,
       user_id: userId,
       role: "user",
-      content: data.userMessage,
+      content: data.userMessage + attachmentNote,
     });
     if (insErr) throw new Error(insErr.message);
 
@@ -251,10 +254,34 @@ export const runChat = createServerFn({ method: "POST" })
     const effectiveLang = detected ?? data.language;
     const system = buildSystemPrompt(effectiveLang, searchContext);
 
+    // Build the last user turn. When there's an attachment, use multimodal
+    // content blocks; inline extracted text for parsed files.
+    let lastUserContent: string | ContentBlock[] = data.userMessage;
+    if (data.attachment) {
+      const a = data.attachment;
+      const blocks: ContentBlock[] = [
+        { type: "text", text: data.userMessage || "Please analyze this attachment." },
+      ];
+      if (a.kind === "image" && a.dataUrl) {
+        blocks.push({ type: "image_url", image_url: { url: a.dataUrl } });
+      } else if (a.kind === "file" && a.dataUrl) {
+        blocks.push({
+          type: "file",
+          file: { filename: a.filename ?? "file", file_data: a.dataUrl },
+        });
+      } else if (a.kind === "text" && a.text) {
+        blocks[0] = {
+          type: "text",
+          text: `${data.userMessage}\n\n--- Attached file: ${a.filename ?? "file"} ---\n${a.text.slice(0, 200_000)}`,
+        };
+      }
+      lastUserContent = blocks;
+    }
+
     const messages: Msg[] = [
       { role: "system", content: system },
       ...((history ?? []) as Msg[]),
-      { role: "user", content: data.userMessage },
+      { role: "user", content: lastUserContent },
     ];
 
     const key = process.env.LOVABLE_API_KEY;
