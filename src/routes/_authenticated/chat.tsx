@@ -444,6 +444,29 @@ function ChatPage() {
           </Button>
         </div>
         <div className="max-w-2xl mx-auto flex items-end gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            accept="image/*,application/pdf,.txt,.md,.json,.csv,.yaml,.yml,.xml,.html,.css,.js,.jsx,.ts,.tsx,.py,.rb,.go,.rs,.java,.kt,.swift,.c,.h,.cpp,.hpp,.cs,.php,.sh,.sql,.docx"
+            onChange={(e) => { void handleFilePicked(e.target.files?.[0]); e.currentTarget.value = ""; }}
+          />
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(e) => { void handleFilePicked(e.target.files?.[0]); e.currentTarget.value = ""; }}
+          />
+          <div className="flex flex-col gap-1">
+            <Button size="icon" variant="ghost" className="h-9 w-9" title="Attach file" onClick={() => fileInputRef.current?.click()}>
+              <Paperclip className="h-4 w-4" />
+            </Button>
+            <Button size="icon" variant="ghost" className="h-9 w-9" title="Camera" onClick={() => cameraInputRef.current?.click()}>
+              <Camera className="h-4 w-4" />
+            </Button>
+          </div>
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -458,14 +481,45 @@ function ChatPage() {
             className="min-h-[48px] max-h-40 resize-none bg-input/60 border-border/70"
           />
           <Button
+            onClick={recording ? stopRecording : startRecording}
+            disabled={transcribing}
+            size="icon"
+            variant={recording ? "destructive" : "ghost"}
+            className="h-12 w-12 shrink-0"
+            title={recording ? "Stop recording" : "Voice input"}
+          >
+            {transcribing ? <Loader2 className="h-4 w-4 animate-spin" /> : recording ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+          </Button>
+          <Button
             onClick={send}
-            disabled={sending || !input.trim()}
+            disabled={sending || (!input.trim() && !attachment)}
             size="icon"
             className="h-12 w-12 shrink-0 bg-[image:var(--gradient-primary)] text-primary-foreground shadow-[var(--shadow-glow)]"
           >
             {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>
         </div>
+        {attachment && (
+          <div className="max-w-2xl mx-auto">
+            <div className="inline-flex items-center gap-2 rounded-lg border border-border/60 bg-card/70 px-2 py-1.5 text-xs">
+              {attachment.kind === "image" && attachment.previewUrl ? (
+                <img src={attachment.previewUrl} alt="" className="h-8 w-8 rounded object-cover" />
+              ) : attachment.kind === "image" ? (
+                <ImageIcon className="h-4 w-4 text-primary" />
+              ) : (
+                <FileText className="h-4 w-4 text-primary" />
+              )}
+              <span className="max-w-[220px] truncate">{attachment.filename}</span>
+              <button
+                onClick={() => setAttachment(null)}
+                className="text-muted-foreground hover:text-destructive"
+                aria-label="Remove attachment"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
