@@ -16,6 +16,7 @@ const RunInput = z.object({
   language: z.string().min(1).max(40),
   webSearch: z.boolean().default(false),
   userMessage: z.string().min(1),
+  meshModel: z.string().max(120).optional(),
   attachment: z
     .object({
       kind: z.enum(["image", "file", "text"]),
@@ -286,13 +287,37 @@ export const runChat = createServerFn({ method: "POST" })
 
     const key = process.env.LOVABLE_API_KEY;
     if (!key) throw new Error("AI is not configured. Please contact support.");
-    const reply = await callOpenAICompatible(
-      "https://ai.gateway.lovable.dev/v1",
-      key,
-      "google/gemini-3.5-flash",
-      messages,
-      { label: "Lovable AI", auth: "lovable" },
-    );
+    let reply: string;
+    if (data.meshModel) {
+      const meshKey = process.env.MESH_API_KEY;
+      if (!meshKey) throw new Error("Mesh API is not configured.");
+      // Verify Pro-gated models against the user's subscription tier.
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("subscription_tier")
+        .eq("user_id", userId)
+        .maybeSingle();
+      const tier = (profile?.subscription_tier as string | undefined) ?? "free";
+      const isFree = /:free$/i.test(data.meshModel);
+      if (!isFree && tier !== "pro") {
+        throw new Error("This is a Pro model. Please upgrade your subscription.");
+      }
+      reply = await callOpenAICompatible(
+        "https://api.meshapi.ai/v1",
+        meshKey,
+        data.meshModel,
+        messages,
+        { label: "Mesh" },
+      );
+    } else {
+      reply = await callOpenAICompatible(
+        "https://ai.gateway.lovable.dev/v1",
+        key,
+        "google/gemini-3.5-flash",
+        messages,
+        { label: "Lovable AI", auth: "lovable" },
+      );
+    }
 
     await supabase.from("messages").insert({
       conversation_id: data.conversationId,
@@ -497,4 +522,151 @@ export const editUserMessage = createServerFn({ method: "POST" })
       .eq("id", data.conversationId);
 
     return { reply };
+  });
+
+// ---- Mesh model marketplace ----
+type MeshModel = { id: string; free: boolean; label: string };
+
+// Curated free-model IDs. Anything matching (or ending in :free) is treated
+// as free, everything else is Pro-gated.
+const FREE_MESH_IDS = new Set<string>([
+  "openai/gpt-4o-mini",
+  "google/gemini-2.5-flash",
+  "google/gemini-flash-1.5",
+  "meta-llama/llama-3.1-8b-instruct",
+  "mistralai/mistral-7b-instruct",
+  "qwen/qwen-2.5-7b-instruct",
+]);
+
+export const listMeshModels = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async (): Promise<{ free: MeshModel[]; pro: MeshModel[] }> => {
+    const key = process.env.MESH_API_KEY;
+    if (!key) return { free: [], pro: [] };
+    try {
+      const res = await fetch("https://api.meshapi.ai/v1/models", {
+        headers: { Authorization: `Bearer ${key}` },
+      });
+      if (!res.ok) return { free: [], pro: [] };
+      const json = (await res.json()) as { data?: Array<{ id: string; name?: string }> };
+      const all = (json.data ?? []).map((m) => {
+        const isFree = /:free$/i.test(m.id) || FREE_MESH_IDS.has(m.id);
+        return { id: m.id, free: isFree, label: m.name ?? m.id };
+      });
+      // Fallback: if no models were flagged free, mark the first 4 as free.
+      let free = all.filter((m) => m.free);
+      let pro = all.filter((m) => !m.free);
+      if (free.length === 0 && pro.length > 0) {
+        free = pro.slice(0, 4).map((m) => ({ ...m, free: true }));
+        pro = pro.slice(4);
+      }
+      return { free, pro };
+    } catch {
+      return { free: [], pro: [] };
+    }
+  });
+
+// ---- Subscription tier ----
+export const getSubscription = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { data } = await supabase
+      .from("profiles")
+      .select("subscription_tier, selected_model")
+      .eq("user_id", userId)
+      .maybeSingle();
+    return {
+      tier: (data?.subscription_tier as "free" | "pro" | undefined) ?? "free",
+      selectedModel: (data?.selected_model as string | null) ?? null,
+    };
+  });
+
+const SetTierInput = z.object({ tier: z.enum(["free", "pro"]) });
+export const setSubscription = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => SetTierInput.parse(data))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    await supabase
+      .from("profiles")
+      .upsert({ user_id: userId, subscription_tier: data.tier }, { onConflict: "user_id" });
+    return { ok: true, tier: data.tier };
+  });
+
+const SetModelInput = z.object({ model: z.string().max(120).nullable() });
+export const setSelectedModel = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => SetModelInput.parse(data))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    await supabase
+      .from("profiles")
+      .upsert({ user_id: userId, selected_model: data.model }, { onConflict: "user_id" });
+    return { ok: true };
+  });
+
+// ---- Piston code execution ----
+// Map our language ids to Piston-supported runtimes.
+const PISTON_LANG: Record<string, { language: string; version: string; filename: string }> = {
+  python: { language: "python", version: "3.10.0", filename: "main.py" },
+  py: { language: "python", version: "3.10.0", filename: "main.py" },
+  javascript: { language: "javascript", version: "18.15.0", filename: "main.js" },
+  js: { language: "javascript", version: "18.15.0", filename: "main.js" },
+  typescript: { language: "typescript", version: "5.0.3", filename: "main.ts" },
+  ts: { language: "typescript", version: "5.0.3", filename: "main.ts" },
+  java: { language: "java", version: "15.0.2", filename: "Main.java" },
+  c: { language: "c", version: "10.2.0", filename: "main.c" },
+  cpp: { language: "c++", version: "10.2.0", filename: "main.cpp" },
+  "c++": { language: "c++", version: "10.2.0", filename: "main.cpp" },
+  csharp: { language: "csharp.net", version: "5.0.201", filename: "main.cs" },
+  "c#": { language: "csharp.net", version: "5.0.201", filename: "main.cs" },
+  go: { language: "go", version: "1.16.2", filename: "main.go" },
+  rust: { language: "rust", version: "1.68.2", filename: "main.rs" },
+  ruby: { language: "ruby", version: "3.0.1", filename: "main.rb" },
+  php: { language: "php", version: "8.2.3", filename: "main.php" },
+  swift: { language: "swift", version: "5.3.3", filename: "main.swift" },
+  kotlin: { language: "kotlin", version: "1.8.20", filename: "main.kt" },
+  bash: { language: "bash", version: "5.2.0", filename: "main.sh" },
+  sh: { language: "bash", version: "5.2.0", filename: "main.sh" },
+  sql: { language: "sqlite3", version: "3.36.0", filename: "main.sql" },
+};
+
+const ExecInput = z.object({
+  language: z.string().min(1).max(40),
+  code: z.string().min(1).max(200_000),
+  stdin: z.string().max(50_000).optional(),
+});
+
+export const executeCode = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => ExecInput.parse(data))
+  .handler(async ({ data }) => {
+    const cfg = PISTON_LANG[data.language.toLowerCase()];
+    if (!cfg) return { ok: false, error: `Language "${data.language}" is not supported for execution.` };
+    const res = await fetch("https://emkc.org/api/v2/piston/execute", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        language: cfg.language,
+        version: cfg.version,
+        files: [{ name: cfg.filename, content: data.code }],
+        stdin: data.stdin ?? "",
+        run_timeout: 8000,
+      }),
+    });
+    if (!res.ok) return { ok: false, error: `Piston error ${res.status}: ${await res.text()}` };
+    const json = (await res.json()) as {
+      run?: { stdout?: string; stderr?: string; output?: string; code?: number };
+      compile?: { stderr?: string; output?: string };
+    };
+    const compileErr = json.compile?.stderr?.trim();
+    const stdout = json.run?.stdout ?? "";
+    const stderr = json.run?.stderr ?? "";
+    return {
+      ok: true,
+      stdout,
+      stderr: compileErr ? `${compileErr}\n${stderr}` : stderr,
+      exitCode: json.run?.code ?? 0,
+    };
   });

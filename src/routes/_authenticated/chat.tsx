@@ -2,13 +2,13 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { runChat, testProvider, regenerateLast, editUserMessage, transcribeAudio } from "@/lib/chat.functions";
+import { runChat, testProvider, regenerateLast, editUserMessage, transcribeAudio, listMeshModels, getSubscription, setSelectedModel } from "@/lib/chat.functions";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Loader2, Menu, Plus, Send, Settings as SettingsIcon, Globe, Trash2, MessageSquare, Zap, Copy, Check, RefreshCw, Pencil, X, Mic, Camera, Paperclip, Square, FileText, Image as ImageIcon } from "lucide-react";
+import { Loader2, Menu, Plus, Send, Settings as SettingsIcon, Globe, Trash2, MessageSquare, Zap, Copy, Check, RefreshCw, Pencil, X, Mic, Camera, Paperclip, Square, FileText, Image as ImageIcon, Lock, Sparkles, Crown } from "lucide-react";
 import { NepalLogo } from "@/components/NepalLogo";
 import { LANGUAGES } from "@/lib/languages";
 import ReactMarkdown from "react-markdown";
@@ -29,6 +29,9 @@ function ChatPage() {
   const regenFn = useServerFn(regenerateLast);
   const editFn = useServerFn(editUserMessage);
   const transcribeFn = useServerFn(transcribeAudio);
+  const listModelsFn = useServerFn(listMeshModels);
+  const getSubFn = useServerFn(getSubscription);
+  const saveModelFn = useServerFn(setSelectedModel);
   const [testing, setTesting] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -38,6 +41,10 @@ function ChatPage() {
   const [webSearch, setWebSearch] = useState(false);
   const [sending, setSending] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [tier, setTier] = useState<"free" | "pro">("free");
+  const [meshModel, setMeshModel] = useState<string | null>(null);
+  const [models, setModels] = useState<{ free: { id: string; label: string }[]; pro: { id: string; label: string }[] }>({ free: [], pro: [] });
+  const navigate = Route.useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -141,6 +148,34 @@ function ChatPage() {
   }, []);
 
   useEffect(() => {
+    (async () => {
+      try {
+        const [ms, sub] = await Promise.all([listModelsFn(), getSubFn()]);
+        setModels({ free: ms.free, pro: ms.pro });
+        setTier(sub.tier);
+        if (sub.selectedModel) setMeshModel(sub.selectedModel);
+      } catch {
+        /* mesh optional */
+      }
+    })();
+  }, [listModelsFn, getSubFn]);
+
+  const pickModel = async (id: string, isFree: boolean) => {
+    if (!isFree && tier !== "pro") {
+      navigate({ to: "/subscription" });
+      return;
+    }
+    setMeshModel(id);
+    try { await saveModelFn({ data: { model: id } }); } catch { /* ignore */ }
+    toast.success(`Model: ${id}`);
+  };
+
+  const clearModel = async () => {
+    setMeshModel(null);
+    try { await saveModelFn({ data: { model: null } }); } catch { /* ignore */ }
+  };
+
+  useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, sending]);
 
@@ -179,6 +214,7 @@ function ChatPage() {
           language,
           webSearch,
           userMessage: text || "Please analyze the attached file.",
+          meshModel: meshModel ?? undefined,
           attachment: sentAttachment
             ? {
                 kind: sentAttachment.kind,
@@ -359,9 +395,15 @@ function ChatPage() {
               ))}
             </div>
             <div className="absolute bottom-0 left-0 right-0 p-3 border-t border-sidebar-border bg-sidebar">
+              <Link to="/subscription">
+                <Button variant="ghost" className="w-full justify-start gap-2">
+                  <Crown className="h-4 w-4 text-primary" /> Subscription
+                  <span className="ml-auto text-[10px] uppercase tracking-wider text-muted-foreground">{tier}</span>
+                </Button>
+              </Link>
               <Link to="/settings">
                 <Button variant="ghost" className="w-full justify-start gap-2">
-                  <SettingsIcon className="h-4 w-4" /> Settings & API keys
+                  <SettingsIcon className="h-4 w-4" /> Settings
                 </Button>
               </Link>
             </div>
@@ -413,6 +455,29 @@ function ChatPage() {
         </div>
       </div>
 
+      {(models.free.length > 0 || models.pro.length > 0) && (
+        <div className="border-t border-border/50 bg-background/60 backdrop-blur-xl px-3 py-2">
+          <div className="max-w-2xl mx-auto space-y-1.5">
+            <ModelRow
+              label="Free Models"
+              icon={<Sparkles className="h-3 w-3 text-primary" />}
+              models={models.free}
+              selected={meshModel}
+              onPick={(id) => pickModel(id, true)}
+              onClear={clearModel}
+              showDefault
+            />
+            <ModelRow
+              label="Pro Models"
+              icon={<Crown className="h-3 w-3 text-primary" />}
+              models={models.pro}
+              selected={meshModel}
+              onPick={(id) => pickModel(id, false)}
+              locked={tier !== "pro"}
+            />
+          </div>
+        </div>
+      )}
       <div className="border-t border-border/50 bg-background/80 backdrop-blur-xl px-3 pt-2 pb-3 space-y-2">
         <div className="max-w-2xl mx-auto flex items-center gap-2">
           <Select value={language} onValueChange={setLanguage}>
@@ -735,4 +800,61 @@ function blobToBase64(blob: Blob): Promise<string> {
     r.onerror = () => reject(r.error);
     r.readAsDataURL(blob);
   });
+}
+
+function ModelRow({
+  label, icon, models, selected, onPick, onClear, locked, showDefault,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  models: { id: string; label: string }[];
+  selected: string | null;
+  onPick: (id: string) => void;
+  onClear?: () => void;
+  locked?: boolean;
+  showDefault?: boolean;
+}) {
+  if (models.length === 0) return null;
+  return (
+    <div>
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground px-1 mb-1">
+        {icon} {label}
+      </div>
+      <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-thin">
+        {showDefault && (
+          <button
+            onClick={onClear}
+            className={cn(
+              "shrink-0 rounded-full border px-3 py-1 text-[11px] transition whitespace-nowrap",
+              selected === null
+                ? "border-primary bg-primary/15 text-foreground"
+                : "border-border/60 bg-card/50 text-muted-foreground hover:text-foreground",
+            )}
+          >
+            ✨ Default
+          </button>
+        )}
+        {models.map((m) => {
+          const active = selected === m.id;
+          return (
+            <button
+              key={m.id}
+              onClick={() => onPick(m.id)}
+              className={cn(
+                "shrink-0 rounded-full border px-3 py-1 text-[11px] transition whitespace-nowrap inline-flex items-center gap-1",
+                active
+                  ? "border-primary bg-primary/15 text-foreground"
+                  : "border-border/60 bg-card/50 text-muted-foreground hover:text-foreground",
+                locked && "opacity-80",
+              )}
+              title={m.id}
+            >
+              {locked && <Lock className="h-3 w-3" />}
+              {m.label.length > 34 ? m.label.slice(0, 32) + "…" : m.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
