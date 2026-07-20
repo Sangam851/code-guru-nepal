@@ -455,6 +455,29 @@ function ChatPage() {
         </div>
       </div>
 
+      {(models.free.length > 0 || models.pro.length > 0) && (
+        <div className="border-t border-border/50 bg-background/60 backdrop-blur-xl px-3 py-2">
+          <div className="max-w-2xl mx-auto space-y-1.5">
+            <ModelRow
+              label="Free Models"
+              icon={<Sparkles className="h-3 w-3 text-primary" />}
+              models={models.free}
+              selected={meshModel}
+              onPick={(id) => pickModel(id, true)}
+              onClear={clearModel}
+              showDefault
+            />
+            <ModelRow
+              label="Pro Models"
+              icon={<Crown className="h-3 w-3 text-primary" />}
+              models={models.pro}
+              selected={meshModel}
+              onPick={(id) => pickModel(id, false)}
+              locked={tier !== "pro"}
+            />
+          </div>
+        </div>
+      )}
       <div className="border-t border-border/50 bg-background/80 backdrop-blur-xl px-3 pt-2 pb-3 space-y-2">
         <div className="max-w-2xl mx-auto flex items-center gap-2">
           <Select value={language} onValueChange={setLanguage}>
