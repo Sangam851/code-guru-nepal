@@ -801,3 +801,60 @@ function blobToBase64(blob: Blob): Promise<string> {
     r.readAsDataURL(blob);
   });
 }
+
+function ModelRow({
+  label, icon, models, selected, onPick, onClear, locked, showDefault,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  models: { id: string; label: string }[];
+  selected: string | null;
+  onPick: (id: string) => void;
+  onClear?: () => void;
+  locked?: boolean;
+  showDefault?: boolean;
+}) {
+  if (models.length === 0) return null;
+  return (
+    <div>
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground px-1 mb-1">
+        {icon} {label}
+      </div>
+      <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-thin">
+        {showDefault && (
+          <button
+            onClick={onClear}
+            className={cn(
+              "shrink-0 rounded-full border px-3 py-1 text-[11px] transition whitespace-nowrap",
+              selected === null
+                ? "border-primary bg-primary/15 text-foreground"
+                : "border-border/60 bg-card/50 text-muted-foreground hover:text-foreground",
+            )}
+          >
+            ✨ Default
+          </button>
+        )}
+        {models.map((m) => {
+          const active = selected === m.id;
+          return (
+            <button
+              key={m.id}
+              onClick={() => onPick(m.id)}
+              className={cn(
+                "shrink-0 rounded-full border px-3 py-1 text-[11px] transition whitespace-nowrap inline-flex items-center gap-1",
+                active
+                  ? "border-primary bg-primary/15 text-foreground"
+                  : "border-border/60 bg-card/50 text-muted-foreground hover:text-foreground",
+                locked && "opacity-80",
+              )}
+              title={m.id}
+            >
+              {locked && <Lock className="h-3 w-3" />}
+              {m.label.length > 34 ? m.label.slice(0, 32) + "…" : m.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
