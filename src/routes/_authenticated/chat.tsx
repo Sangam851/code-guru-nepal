@@ -214,6 +214,7 @@ function ChatPage() {
           language,
           webSearch,
           userMessage: text || "Please analyze the attached file.",
+          meshModel: meshModel ?? undefined,
           attachment: sentAttachment
             ? {
                 kind: sentAttachment.kind,
