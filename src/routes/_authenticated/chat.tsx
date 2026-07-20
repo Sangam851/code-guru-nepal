@@ -395,9 +395,15 @@ function ChatPage() {
               ))}
             </div>
             <div className="absolute bottom-0 left-0 right-0 p-3 border-t border-sidebar-border bg-sidebar">
+              <Link to="/subscription">
+                <Button variant="ghost" className="w-full justify-start gap-2">
+                  <Crown className="h-4 w-4 text-primary" /> Subscription
+                  <span className="ml-auto text-[10px] uppercase tracking-wider text-muted-foreground">{tier}</span>
+                </Button>
+              </Link>
               <Link to="/settings">
                 <Button variant="ghost" className="w-full justify-start gap-2">
-                  <SettingsIcon className="h-4 w-4" /> Settings & API keys
+                  <SettingsIcon className="h-4 w-4" /> Settings
                 </Button>
               </Link>
             </div>
