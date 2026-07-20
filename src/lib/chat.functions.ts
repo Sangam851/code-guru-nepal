@@ -16,6 +16,7 @@ const RunInput = z.object({
   language: z.string().min(1).max(40),
   webSearch: z.boolean().default(false),
   userMessage: z.string().min(1),
+  meshModel: z.string().max(120).optional(),
   attachment: z
     .object({
       kind: z.enum(["image", "file", "text"]),
