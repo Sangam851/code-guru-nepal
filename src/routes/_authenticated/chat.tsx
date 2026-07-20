@@ -2,13 +2,13 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { runChat, testProvider, regenerateLast, editUserMessage, transcribeAudio } from "@/lib/chat.functions";
+import { runChat, testProvider, regenerateLast, editUserMessage, transcribeAudio, listMeshModels, getSubscription, setSelectedModel } from "@/lib/chat.functions";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Loader2, Menu, Plus, Send, Settings as SettingsIcon, Globe, Trash2, MessageSquare, Zap, Copy, Check, RefreshCw, Pencil, X, Mic, Camera, Paperclip, Square, FileText, Image as ImageIcon } from "lucide-react";
+import { Loader2, Menu, Plus, Send, Settings as SettingsIcon, Globe, Trash2, MessageSquare, Zap, Copy, Check, RefreshCw, Pencil, X, Mic, Camera, Paperclip, Square, FileText, Image as ImageIcon, Lock, Sparkles, Crown } from "lucide-react";
 import { NepalLogo } from "@/components/NepalLogo";
 import { LANGUAGES } from "@/lib/languages";
 import ReactMarkdown from "react-markdown";
@@ -29,6 +29,9 @@ function ChatPage() {
   const regenFn = useServerFn(regenerateLast);
   const editFn = useServerFn(editUserMessage);
   const transcribeFn = useServerFn(transcribeAudio);
+  const listModelsFn = useServerFn(listMeshModels);
+  const getSubFn = useServerFn(getSubscription);
+  const saveModelFn = useServerFn(setSelectedModel);
   const [testing, setTesting] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -38,6 +41,10 @@ function ChatPage() {
   const [webSearch, setWebSearch] = useState(false);
   const [sending, setSending] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [tier, setTier] = useState<"free" | "pro">("free");
+  const [meshModel, setMeshModel] = useState<string | null>(null);
+  const [models, setModels] = useState<{ free: { id: string; label: string }[]; pro: { id: string; label: string }[] }>({ free: [], pro: [] });
+  const navigate = Route.useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -139,6 +146,34 @@ function ChatPage() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [ms, sub] = await Promise.all([listModelsFn(), getSubFn()]);
+        setModels({ free: ms.free, pro: ms.pro });
+        setTier(sub.tier);
+        if (sub.selectedModel) setMeshModel(sub.selectedModel);
+      } catch {
+        /* mesh optional */
+      }
+    })();
+  }, [listModelsFn, getSubFn]);
+
+  const pickModel = async (id: string, isFree: boolean) => {
+    if (!isFree && tier !== "pro") {
+      navigate({ to: "/subscription" });
+      return;
+    }
+    setMeshModel(id);
+    try { await saveModelFn({ data: { model: id } }); } catch { /* ignore */ }
+    toast.success(`Model: ${id}`);
+  };
+
+  const clearModel = async () => {
+    setMeshModel(null);
+    try { await saveModelFn({ data: { model: null } }); } catch { /* ignore */ }
+  };
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
