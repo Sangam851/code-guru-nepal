@@ -287,13 +287,37 @@ export const runChat = createServerFn({ method: "POST" })
 
     const key = process.env.LOVABLE_API_KEY;
     if (!key) throw new Error("AI is not configured. Please contact support.");
-    const reply = await callOpenAICompatible(
-      "https://ai.gateway.lovable.dev/v1",
-      key,
-      "google/gemini-3.5-flash",
-      messages,
-      { label: "Lovable AI", auth: "lovable" },
-    );
+    let reply: string;
+    if (data.meshModel) {
+      const meshKey = process.env.MESH_API_KEY;
+      if (!meshKey) throw new Error("Mesh API is not configured.");
+      // Verify Pro-gated models against the user's subscription tier.
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("subscription_tier")
+        .eq("user_id", userId)
+        .maybeSingle();
+      const tier = (profile?.subscription_tier as string | undefined) ?? "free";
+      const isFree = /:free$/i.test(data.meshModel);
+      if (!isFree && tier !== "pro") {
+        throw new Error("This is a Pro model. Please upgrade your subscription.");
+      }
+      reply = await callOpenAICompatible(
+        "https://api.meshapi.ai/v1",
+        meshKey,
+        data.meshModel,
+        messages,
+        { label: "Mesh" },
+      );
+    } else {
+      reply = await callOpenAICompatible(
+        "https://ai.gateway.lovable.dev/v1",
+        key,
+        "google/gemini-3.5-flash",
+        messages,
+        { label: "Lovable AI", auth: "lovable" },
+      );
+    }
 
     await supabase.from("messages").insert({
       conversation_id: data.conversationId,
