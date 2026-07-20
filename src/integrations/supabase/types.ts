@@ -76,6 +76,30 @@ export type Database = {
           },
         ]
       }
+      profiles: {
+        Row: {
+          created_at: string
+          selected_model: string | null
+          subscription_tier: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          selected_model?: string | null
+          subscription_tier?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          selected_model?: string | null
+          subscription_tier?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_settings: {
         Row: {
           ai_api_key: string | null
