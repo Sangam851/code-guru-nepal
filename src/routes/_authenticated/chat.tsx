@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Loader2, Menu, Plus, Send, Settings as SettingsIcon, Globe, Trash2, MessageSquare, Zap, Copy, Check, RefreshCw, Pencil, X, Mic, Camera, Paperclip, Square, FileText, Image as ImageIcon, Lock, Sparkles, Crown } from "lucide-react";
+import { Loader2, Menu, Plus, Send, Settings as SettingsIcon, Globe, Trash2, MessageSquare, Zap, Copy, Check, RefreshCw, Pencil, X, Mic, Camera, Paperclip, Square, FileText, Image as ImageIcon, Lock, Sparkles, Crown, Search } from "lucide-react";
 import { NepalLogo } from "@/components/NepalLogo";
 import { LANGUAGES } from "@/lib/languages";
 import ReactMarkdown from "react-markdown";
@@ -44,6 +45,10 @@ function ChatPage() {
   const [tier, setTier] = useState<"free" | "pro">("free");
   const [meshModel, setMeshModel] = useState<string | null>(null);
   const [models, setModels] = useState<{ free: { id: string; label: string }[]; pro: { id: string; label: string }[] }>({ free: [], pro: [] });
+  const [modelQuery, setModelQuery] = useState("");
+  const [modelFamily, setModelFamily] = useState<string>("all");
+  const [modelTier, setModelTier] = useState<"all" | "free" | "pro">("all");
+  const [modelSort, setModelSort] = useState<"name-asc" | "name-desc" | "family">("name-asc");
   const navigate = Route.useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -455,29 +460,107 @@ function ChatPage() {
         </div>
       </div>
 
-      {(models.free.length > 0 || models.pro.length > 0) && (
-        <div className="border-t border-border/50 bg-background/60 backdrop-blur-xl px-3 py-2">
-          <div className="max-w-2xl mx-auto space-y-1.5">
-            <ModelRow
-              label="Free Models"
-              icon={<Sparkles className="h-3 w-3 text-primary" />}
-              models={models.free}
-              selected={meshModel}
-              onPick={(id) => pickModel(id, true)}
-              onClear={clearModel}
-              showDefault
-            />
-            <ModelRow
-              label="Pro Models"
-              icon={<Crown className="h-3 w-3 text-primary" />}
-              models={models.pro}
-              selected={meshModel}
-              onPick={(id) => pickModel(id, false)}
-              locked={tier !== "pro"}
-            />
+      {(models.free.length > 0 || models.pro.length > 0) && (() => {
+        const familyOf = (id: string) => (id.includes("/") ? id.split("/")[0] : id.split(/[-:_ ]/)[0]).toLowerCase();
+        const families = Array.from(
+          new Set([...models.free, ...models.pro].map((m) => familyOf(m.id))),
+        ).sort();
+        const q = modelQuery.trim().toLowerCase();
+        const sortFn = (a: { id: string; label: string }, b: { id: string; label: string }) => {
+          if (modelSort === "name-desc") return b.label.localeCompare(a.label);
+          if (modelSort === "family") {
+            const fa = familyOf(a.id); const fb = familyOf(b.id);
+            return fa === fb ? a.label.localeCompare(b.label) : fa.localeCompare(fb);
+          }
+          return a.label.localeCompare(b.label);
+        };
+        const filterList = (list: { id: string; label: string }[]) =>
+          list
+            .filter((m) => {
+              if (q && !(m.label.toLowerCase().includes(q) || m.id.toLowerCase().includes(q))) return false;
+              if (modelFamily !== "all" && familyOf(m.id) !== modelFamily) return false;
+              return true;
+            })
+            .slice()
+            .sort(sortFn);
+        const freeShown = modelTier === "pro" ? [] : filterList(models.free);
+        const proShown = modelTier === "free" ? [] : filterList(models.pro);
+        const totalShown = freeShown.length + proShown.length;
+        return (
+          <div className="border-t border-border/50 bg-background/60 backdrop-blur-xl px-3 py-2">
+            <div className="max-w-2xl mx-auto space-y-1.5">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <div className="relative flex-1 min-w-[140px]">
+                  <Search className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    value={modelQuery}
+                    onChange={(e) => setModelQuery(e.target.value)}
+                    placeholder="Search models…"
+                    className="h-8 pl-7 pr-7 text-xs bg-input/60"
+                  />
+                  {modelQuery && (
+                    <button
+                      onClick={() => setModelQuery("")}
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      aria-label="Clear search"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+                <Select value={modelTier} onValueChange={(v) => setModelTier(v as "all" | "free" | "pro")}>
+                  <SelectTrigger className="h-8 w-[92px] text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All tiers</SelectItem>
+                    <SelectItem value="free">Free only</SelectItem>
+                    <SelectItem value="pro">Pro only</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={modelFamily} onValueChange={setModelFamily}>
+                  <SelectTrigger className="h-8 w-[110px] text-xs"><SelectValue placeholder="Family" /></SelectTrigger>
+                  <SelectContent className="max-h-64">
+                    <SelectItem value="all">All families</SelectItem>
+                    {families.map((f) => (
+                      <SelectItem key={f} value={f}>{f}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={modelSort} onValueChange={(v) => setModelSort(v as "name-asc" | "name-desc" | "family")}>
+                  <SelectTrigger className="h-8 w-[110px] text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="name-asc">Name A–Z</SelectItem>
+                    <SelectItem value="name-desc">Name Z–A</SelectItem>
+                    <SelectItem value="family">By family</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {totalShown === 0 ? (
+                <p className="text-[11px] text-muted-foreground px-1 py-2">No models match your filters.</p>
+              ) : (
+                <>
+                  <ModelRow
+                    label={`Free Models${freeShown.length ? ` (${freeShown.length})` : ""}`}
+                    icon={<Sparkles className="h-3 w-3 text-primary" />}
+                    models={freeShown}
+                    selected={meshModel}
+                    onPick={(id) => pickModel(id, true)}
+                    onClear={clearModel}
+                    showDefault={modelTier !== "pro" && !q && modelFamily === "all"}
+                  />
+                  <ModelRow
+                    label={`Pro Models${proShown.length ? ` (${proShown.length})` : ""}`}
+                    icon={<Crown className="h-3 w-3 text-primary" />}
+                    models={proShown}
+                    selected={meshModel}
+                    onPick={(id) => pickModel(id, false)}
+                    locked={tier !== "pro"}
+                  />
+                </>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
       <div className="border-t border-border/50 bg-background/80 backdrop-blur-xl px-3 pt-2 pb-3 space-y-2">
         <div className="max-w-2xl mx-auto flex items-center gap-2">
           <Select value={language} onValueChange={setLanguage}>
