@@ -170,7 +170,7 @@ async function callOpenAICompatible(
 }
 
 const TestInput = z.object({
-  provider: z.enum(["lovable", "openai", "anthropic", "openrouter"]),
+  provider: z.enum(["mesh", "lovable", "openai", "anthropic", "openrouter"]),
   model: z.string().min(1),
   apiKey: z.string().optional(),
 });
@@ -186,7 +186,11 @@ export const testProvider = createServerFn({ method: "POST" })
     ];
     try {
       let reply = "";
-      if (data.provider === "lovable") {
+      if (data.provider === "mesh") {
+        const mesh = await import("./mesh.server");
+        const out = await mesh.meshChat(messages, { model: data.model, maxTokens: 16 });
+        reply = out.reply;
+      } else if (data.provider === "lovable") {
         const key = process.env.LOVABLE_API_KEY;
         if (!key) throw new Error("Lovable AI is not configured.");
         reply = await callOpenAICompatible("https://ai.gateway.lovable.dev/v1", key, data.model, messages, { label: "Lovable AI", maxTokens: 16, auth: "lovable" });
@@ -285,39 +289,23 @@ export const runChat = createServerFn({ method: "POST" })
       { role: "user", content: lastUserContent },
     ];
 
-    const key = process.env.LOVABLE_API_KEY;
-    if (!key) throw new Error("AI is not configured. Please contact support.");
-    let reply: string;
-    if (data.meshModel) {
-      const meshKey = process.env.MESH_API_KEY;
-      if (!meshKey) throw new Error("Mesh API is not configured.");
-      // Verify Pro-gated models against the user's subscription tier.
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("subscription_tier")
-        .eq("user_id", userId)
-        .maybeSingle();
-      const tier = (profile?.subscription_tier as string | undefined) ?? "free";
-      const isFree = /:free$/i.test(data.meshModel);
-      if (!isFree && tier !== "pro") {
-        throw new Error("This is a Pro model. Please upgrade your subscription.");
-      }
-      reply = await callOpenAICompatible(
-        "https://api.meshapi.ai/v1",
-        meshKey,
-        data.meshModel,
-        messages,
-        { label: "Mesh" },
-      );
-    } else {
-      reply = await callOpenAICompatible(
-        "https://ai.gateway.lovable.dev/v1",
-        key,
-        "google/gemini-3.5-flash",
-        messages,
-        { label: "Lovable AI", auth: "lovable" },
-      );
+    // Mesh is the primary AI backend for every conversation.
+    const mesh = await import("./mesh.server");
+    mesh.requireMeshKey();
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("subscription_tier, selected_model")
+      .eq("user_id", userId)
+      .maybeSingle();
+    const tier = (profile?.subscription_tier as string | undefined) ?? "free";
+    const requested = data.meshModel ?? (profile?.selected_model as string | null) ?? null;
+
+    // Server-side Pro gate: never trust the client's model choice.
+    if (requested && tier !== "pro" && !(await mesh.isMeshModelFree(requested))) {
+      throw new Error("This is a Pro model. Please upgrade your subscription.");
     }
+    const { reply } = await mesh.meshChat(messages, { model: requested });
 
     await supabase.from("messages").insert({
       conversation_id: data.conversationId,
@@ -383,15 +371,15 @@ export const regenerateLast = createServerFn({ method: "POST" })
       ...(remaining.map((r) => ({ role: r.role, content: r.content })) as Msg[]),
     ];
 
-    const key = process.env.LOVABLE_API_KEY;
-    if (!key) throw new Error("AI is not configured.");
-    const reply = await callOpenAICompatible(
-      "https://ai.gateway.lovable.dev/v1",
-      key,
-      "google/gemini-3.5-flash",
-      messages,
-      { label: "Lovable AI", auth: "lovable" },
-    );
+    const mesh = await import("./mesh.server");
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("selected_model")
+      .eq("user_id", userId)
+      .maybeSingle();
+    const { reply } = await mesh.meshChat(messages, {
+      model: (profile?.selected_model as string | null) ?? null,
+    });
 
     await supabase.from("messages").insert({
       conversation_id: data.conversationId,
@@ -500,15 +488,15 @@ export const editUserMessage = createServerFn({ method: "POST" })
       { role: "user", content: data.newContent },
     ];
 
-    const key = process.env.LOVABLE_API_KEY;
-    if (!key) throw new Error("AI is not configured.");
-    const reply = await callOpenAICompatible(
-      "https://ai.gateway.lovable.dev/v1",
-      key,
-      "google/gemini-3.5-flash",
-      messages,
-      { label: "Lovable AI", auth: "lovable" },
-    );
+    const mesh = await import("./mesh.server");
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("selected_model")
+      .eq("user_id", userId)
+      .maybeSingle();
+    const { reply } = await mesh.meshChat(messages, {
+      model: (profile?.selected_model as string | null) ?? null,
+    });
 
     await supabase.from("messages").insert({
       conversation_id: data.conversationId,
@@ -525,45 +513,12 @@ export const editUserMessage = createServerFn({ method: "POST" })
   });
 
 // ---- Mesh model marketplace ----
-type MeshModel = { id: string; free: boolean; label: string };
-
-// Curated free-model IDs. Anything matching (or ending in :free) is treated
-// as free, everything else is Pro-gated.
-const FREE_MESH_IDS = new Set<string>([
-  "openai/gpt-4o-mini",
-  "google/gemini-2.5-flash",
-  "google/gemini-flash-1.5",
-  "meta-llama/llama-3.1-8b-instruct",
-  "mistralai/mistral-7b-instruct",
-  "qwen/qwen-2.5-7b-instruct",
-]);
-
+// Models are loaded live from Mesh; unavailable models drop out automatically.
 export const listMeshModels = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async (): Promise<{ free: MeshModel[]; pro: MeshModel[] }> => {
-    const key = process.env.MESH_API_KEY;
-    if (!key) return { free: [], pro: [] };
-    try {
-      const res = await fetch("https://api.meshapi.ai/v1/models", {
-        headers: { Authorization: `Bearer ${key}` },
-      });
-      if (!res.ok) return { free: [], pro: [] };
-      const json = (await res.json()) as { data?: Array<{ id: string; name?: string }> };
-      const all = (json.data ?? []).map((m) => {
-        const isFree = /:free$/i.test(m.id) || FREE_MESH_IDS.has(m.id);
-        return { id: m.id, free: isFree, label: m.name ?? m.id };
-      });
-      // Fallback: if no models were flagged free, mark the first 4 as free.
-      let free = all.filter((m) => m.free);
-      let pro = all.filter((m) => !m.free);
-      if (free.length === 0 && pro.length > 0) {
-        free = pro.slice(0, 4).map((m) => ({ ...m, free: true }));
-        pro = pro.slice(4);
-      }
-      return { free, pro };
-    } catch {
-      return { free: [], pro: [] };
-    }
+  .handler(async () => {
+    const mesh = await import("./mesh.server");
+    return mesh.listMeshModelsSafe();
   });
 
 // ---- Subscription tier ----

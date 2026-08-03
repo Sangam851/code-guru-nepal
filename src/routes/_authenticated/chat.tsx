@@ -71,13 +71,13 @@ function ChatPage() {
     if (testing) return;
     setTesting(true);
     try {
-      const provider = "lovable" as const;
-      const model = "google/gemini-3.5-flash";
+      const provider = "mesh" as const;
+      const model = meshModel ?? "auto";
       const res = await runTestFn({ data: { provider, model } });
       if (res.ok) {
-        toast.success(`Lovable AI • ${model} OK (${res.ms}ms)`, { description: res.reply });
+        toast.success(`Mesh AI • ${model} OK (${res.ms}ms)`, { description: res.reply });
       } else {
-        toast.error("AI test failed", { description: res.error });
+        toast.error("AI service test failed", { description: res.error });
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Test failed");
