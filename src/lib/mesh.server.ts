@@ -132,13 +132,16 @@ export async function fetchMeshModels(force = false): Promise<MeshModel[]> {
     return modelCache.models;
   }
   const res = await meshFetch("/models", { method: "GET", timeoutMs: 20_000 });
-  const json = (await res.json()) as { data?: Array<{ id: string; name?: string }> };
-  const models = (json.data ?? [])
+  const json = (await res.json()) as
+    | Array<{ id: string; name?: string; is_free?: boolean }>
+    | { data?: Array<{ id: string; name?: string; is_free?: boolean }> };
+  const raw = Array.isArray(json) ? json : (json.data ?? []);
+  const models = raw
     .filter((m) => typeof m.id === "string" && m.id.length > 0)
     // Preserve the official Mesh model name — never rename.
     .map<MeshModel>((m) => ({
       id: m.id,
-      free: /:free$/i.test(m.id) || FREE_MESH_IDS.has(m.id),
+      free: m.is_free === true || /:free$/i.test(m.id) || FREE_MESH_IDS.has(m.id),
       label: m.name ?? m.id,
     }));
   modelCache = { at: Date.now(), models };
