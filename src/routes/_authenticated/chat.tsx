@@ -184,8 +184,8 @@ function ChatPage() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, sending]);
 
-  const send = async () => {
-    const text = input.trim();
+  const send = async (override?: string) => {
+    const text = (override ?? input).trim();
     if ((!text && !attachment) || sending) return;
     let convId = activeId;
     if (!convId) {
@@ -209,7 +209,7 @@ function ChatPage() {
     };
     setMessages((m) => [...m, optimistic]);
     const sentAttachment = attachment;
-    setInput("");
+    if (!override) setInput("");
     setAttachment(null);
     setSending(true);
     try {
@@ -447,6 +447,11 @@ function ChatPage() {
                 message={m}
                 onRegenerate={isLastAssistant ? regenerate : undefined}
                 onEdit={isLastUser ? (v) => editAndResend(m.id, v) : undefined}
+                onExplainError={({ language: lg, code, errorText }) =>
+                  send(
+                    `This ${lg} code failed when I ran it. Explain the actual error and give a corrected version.\n\nCode:\n\`\`\`${lg}\n${code}\n\`\`\`\n\nError output:\n\`\`\`\n${errorText}\n\`\`\``,
+                  )
+                }
                 sending={sending}
               />
             );
@@ -639,7 +644,7 @@ function ChatPage() {
             {transcribing ? <Loader2 className="h-4 w-4 animate-spin" /> : recording ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
           </Button>
           <Button
-            onClick={send}
+            onClick={() => void send()}
             disabled={sending || (!input.trim() && !attachment)}
             size="icon"
             className="h-12 w-12 shrink-0 bg-[image:var(--gradient-primary)] text-primary-foreground shadow-[var(--shadow-glow)]"
@@ -703,11 +708,13 @@ function MessageBubble({
   message,
   onRegenerate,
   onEdit,
+  onExplainError,
   sending,
 }: {
   message: Message;
   onRegenerate?: () => void | Promise<void>;
   onEdit?: (newContent: string) => void | Promise<void>;
+  onExplainError?: (payload: { language: string; code: string; errorText: string }) => void | Promise<void>;
   sending?: boolean;
 }) {
   const isUser = message.role === "user";
@@ -776,7 +783,7 @@ function MessageBubble({
       <div className="flex-1 min-w-0 space-y-3">
         {segments.map((seg, i) =>
           seg.type === "code" ? (
-            <CodeBlock key={i} language={seg.lang} value={seg.value} />
+            <CodeBlock key={i} language={seg.lang} value={seg.value} onExplainError={onExplainError} />
           ) : (
             <div
               key={i}
