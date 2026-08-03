@@ -170,7 +170,7 @@ async function callOpenAICompatible(
 }
 
 const TestInput = z.object({
-  provider: z.enum(["lovable", "openai", "anthropic", "openrouter"]),
+  provider: z.enum(["mesh", "lovable", "openai", "anthropic", "openrouter"]),
   model: z.string().min(1),
   apiKey: z.string().optional(),
 });
@@ -186,7 +186,11 @@ export const testProvider = createServerFn({ method: "POST" })
     ];
     try {
       let reply = "";
-      if (data.provider === "lovable") {
+      if (data.provider === "mesh") {
+        const mesh = await import("./mesh.server");
+        const out = await mesh.meshChat(messages, { model: data.model, maxTokens: 16 });
+        reply = out.reply;
+      } else if (data.provider === "lovable") {
         const key = process.env.LOVABLE_API_KEY;
         if (!key) throw new Error("Lovable AI is not configured.");
         reply = await callOpenAICompatible("https://ai.gateway.lovable.dev/v1", key, data.model, messages, { label: "Lovable AI", maxTokens: 16, auth: "lovable" });
