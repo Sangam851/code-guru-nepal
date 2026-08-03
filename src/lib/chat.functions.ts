@@ -367,15 +367,15 @@ export const regenerateLast = createServerFn({ method: "POST" })
       ...(remaining.map((r) => ({ role: r.role, content: r.content })) as Msg[]),
     ];
 
-    const key = process.env.LOVABLE_API_KEY;
-    if (!key) throw new Error("AI is not configured.");
-    const reply = await callOpenAICompatible(
-      "https://ai.gateway.lovable.dev/v1",
-      key,
-      "google/gemini-3.5-flash",
-      messages,
-      { label: "Lovable AI", auth: "lovable" },
-    );
+    const mesh = await import("./mesh.server");
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("selected_model")
+      .eq("user_id", userId)
+      .maybeSingle();
+    const { reply } = await mesh.meshChat(messages, {
+      model: (profile?.selected_model as string | null) ?? null,
+    });
 
     await supabase.from("messages").insert({
       conversation_id: data.conversationId,
