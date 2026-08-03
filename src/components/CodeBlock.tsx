@@ -1,4 +1,4 @@
-import { Copy, Check, Eye, Code2, Play, Loader2, X } from "lucide-react";
+import { Copy, Check, Eye, Code2, Play, Loader2, X, HelpCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useServerFn } from "@tanstack/react-start";
@@ -10,7 +10,15 @@ const PISTON_LANGS = new Set([
   "c++", "csharp", "c#", "go", "rust", "ruby", "php", "swift", "kotlin", "bash", "sh", "sql",
 ]);
 
-export function CodeBlock({ language, value }: { language?: string; value: string }) {
+export function CodeBlock({
+  language,
+  value,
+  onExplainError,
+}: {
+  language?: string;
+  value: string;
+  onExplainError?: (payload: { language: string; code: string; errorText: string }) => void | Promise<void>;
+}) {
   const [copied, setCopied] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [running, setRunning] = useState(false);
@@ -28,6 +36,7 @@ export function CodeBlock({ language, value }: { language?: string; value: strin
   const canSandbox = SANDBOX_LANGS.has(lang) || isHtml;
   const canPiston = PISTON_LANGS.has(lang);
   const canRun = canSandbox || canPiston;
+  const errorText = [runOutput?.error, runOutput?.stderr].filter(Boolean).join("\n").trim();
 
   const srcDoc = useMemo(() => {
     if (!canPreview) return "";
@@ -115,6 +124,18 @@ export function CodeBlock({ language, value }: { language?: string; value: strin
               <X className="h-3 w-3" /> Clear output
             </button>
           )}
+        </div>
+      )}
+      {errorText && onExplainError && (
+        <div className="flex items-center gap-2 px-3 py-1.5 border-t border-border/60 bg-[#141414]">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 px-2 gap-1.5 text-xs"
+            onClick={() => void onExplainError({ language: lang || "code", code: value, errorText })}
+          >
+            <HelpCircle className="h-3.5 w-3.5 text-primary" /> Explain this error
+          </Button>
         </div>
       )}
       {runOutput?.sandboxDoc && (
