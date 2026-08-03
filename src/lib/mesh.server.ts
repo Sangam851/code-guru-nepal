@@ -50,6 +50,9 @@ function friendlyError(status: number, body: string): string {
     // non-JSON body — keep raw
   }
   const compact = message.replace(/\s+/g, " ").trim().slice(0, 400);
+  if (/insufficient balance|spend_limit/i.test(compact)) {
+    return `This model requires paid credits. Please pick a free model. (${compact})`;
+  }
   if (status === 401 || status === 403) return `Mesh authentication failed. Please contact support. (${compact})`;
   if (status === 402) return `Mesh account has insufficient credits. ${compact}`;
   if (status === 404) return `That model is no longer available on Mesh. Pick another model. (${compact})`;
@@ -112,17 +115,10 @@ async function meshFetch(
 
 // ---- Models ----
 
-// Anything ending in :free, or on this curated list, is available to free users.
-const FREE_MESH_IDS = new Set<string>([
-  "openai/gpt-4o-mini",
-  "google/gemini-2.5-flash",
-  "google/gemini-flash-1.5",
-  "meta-llama/llama-3.1-8b-instruct",
-  "mistralai/mistral-7b-instruct",
-  "qwen/qwen-2.5-7b-instruct",
-]);
+// Mesh flags free models with `is_free`; these ids are only a safety net.
+const FREE_MESH_IDS = new Set<string>(["minimax/m2-her", "tencent/hy3"]);
 
-const FALLBACK_MODEL = "openai/gpt-4o-mini";
+const FALLBACK_MODEL = "minimax/m2-her";
 
 let modelCache: { at: number; models: MeshModel[] } | null = null;
 const MODEL_TTL_MS = 5 * 60_000;
