@@ -509,45 +509,12 @@ export const editUserMessage = createServerFn({ method: "POST" })
   });
 
 // ---- Mesh model marketplace ----
-type MeshModel = { id: string; free: boolean; label: string };
-
-// Curated free-model IDs. Anything matching (or ending in :free) is treated
-// as free, everything else is Pro-gated.
-const FREE_MESH_IDS = new Set<string>([
-  "openai/gpt-4o-mini",
-  "google/gemini-2.5-flash",
-  "google/gemini-flash-1.5",
-  "meta-llama/llama-3.1-8b-instruct",
-  "mistralai/mistral-7b-instruct",
-  "qwen/qwen-2.5-7b-instruct",
-]);
-
+// Models are loaded live from Mesh; unavailable models drop out automatically.
 export const listMeshModels = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async (): Promise<{ free: MeshModel[]; pro: MeshModel[] }> => {
-    const key = process.env.MESH_API_KEY;
-    if (!key) return { free: [], pro: [] };
-    try {
-      const res = await fetch("https://api.meshapi.ai/v1/models", {
-        headers: { Authorization: `Bearer ${key}` },
-      });
-      if (!res.ok) return { free: [], pro: [] };
-      const json = (await res.json()) as { data?: Array<{ id: string; name?: string }> };
-      const all = (json.data ?? []).map((m) => {
-        const isFree = /:free$/i.test(m.id) || FREE_MESH_IDS.has(m.id);
-        return { id: m.id, free: isFree, label: m.name ?? m.id };
-      });
-      // Fallback: if no models were flagged free, mark the first 4 as free.
-      let free = all.filter((m) => m.free);
-      let pro = all.filter((m) => !m.free);
-      if (free.length === 0 && pro.length > 0) {
-        free = pro.slice(0, 4).map((m) => ({ ...m, free: true }));
-        pro = pro.slice(4);
-      }
-      return { free, pro };
-    } catch {
-      return { free: [], pro: [] };
-    }
+  .handler(async () => {
+    const mesh = await import("./mesh.server");
+    return mesh.listMeshModelsSafe();
   });
 
 // ---- Subscription tier ----
