@@ -23,17 +23,29 @@ export function CodeBlock({ language, value }: { language?: string; value: strin
   };
 
   const lang = (language || "").toLowerCase();
-  const canPreview = lang === "html" || lang === "htm" || /<html[\s>]|<!doctype html/i.test(value);
-  const canSandbox = SANDBOX_LANGS.has(lang) || canPreview;
+  const isHtml = lang === "html" || lang === "htm" || /<html[\s>]|<!doctype html/i.test(value);
+  const canPreview = isHtml || SANDBOX_LANGS.has(lang);
+  const canSandbox = SANDBOX_LANGS.has(lang) || isHtml;
   const canPiston = PISTON_LANGS.has(lang);
   const canRun = canSandbox || canPiston;
 
   const srcDoc = useMemo(() => {
     if (!canPreview) return "";
-    // If it looks like a complete document, use as-is; otherwise wrap it.
     if (/<html[\s>]/i.test(value) || /<!doctype/i.test(value)) return value;
+    if (lang === "css") {
+      return `<!doctype html><html><head><meta charset="utf-8"><style>${value}</style></head><body><h1>Heading</h1><p>Paragraph text for CSS preview.</p><button>Button</button></body></html>`;
+    }
+    if (lang === "javascript" || lang === "js") {
+      return `<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:system-ui;padding:10px;color:#111;background:#fff}#log{white-space:pre-wrap;font-family:ui-monospace,monospace;font-size:12px}</style></head><body><div id="log"></div><script>
+        const el=document.getElementById('log');
+        const w=(...a)=>{el.textContent+=a.map(x=>typeof x==='object'?JSON.stringify(x):String(x)).join(' ')+'\\n';};
+        console.log=w;console.error=w;console.warn=w;console.info=w;
+        window.onerror=(m)=>w('Error: '+m);
+        try{${value}}catch(e){w('Error: '+e.message);}
+      <\/script></body></html>`;
+    }
     return `<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:system-ui,sans-serif;padding:12px;color:#111;background:#fff;}</style></head><body>${value}</body></html>`;
-  }, [canPreview, value]);
+  }, [canPreview, lang, value]);
 
   const run = async () => {
     if (running) return;
@@ -41,22 +53,7 @@ export function CodeBlock({ language, value }: { language?: string; value: strin
     setRunOutput(null);
     try {
       if (canSandbox) {
-        let doc = "";
-        if (lang === "html" || lang === "htm" || canPreview) {
-          doc = srcDoc || value;
-        } else if (lang === "css") {
-          doc = `<!doctype html><html><head><meta charset="utf-8"><style>${value}</style></head><body><div class="preview">CSS preview</div></body></html>`;
-        } else {
-          // javascript
-          doc = `<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:system-ui;padding:10px;color:#111;background:#fff}#log{white-space:pre-wrap;font-family:ui-monospace,monospace;font-size:12px}</style></head><body><div id="log"></div><script>
-            const el=document.getElementById('log');
-            const w=(...a)=>{el.textContent+=a.map(x=>typeof x==='object'?JSON.stringify(x):String(x)).join(' ')+'\\n';};
-            console.log=w;console.error=w;console.warn=w;console.info=w;
-            window.onerror=(m)=>w('Error: '+m);
-            try{${value}}catch(e){w('Error: '+e.message);}
-          <\/script></body></html>`;
-        }
-        setRunOutput({ sandboxDoc: doc });
+        setRunOutput({ sandboxDoc: srcDoc || value });
       } else {
         const res = await runFn({ data: { language: lang, code: value } });
         if (!res.ok) setRunOutput({ error: res.error });
