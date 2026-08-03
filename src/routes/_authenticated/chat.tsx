@@ -184,8 +184,8 @@ function ChatPage() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, sending]);
 
-  const send = async () => {
-    const text = input.trim();
+  const send = async (override?: string) => {
+    const text = (override ?? input).trim();
     if ((!text && !attachment) || sending) return;
     let convId = activeId;
     if (!convId) {
@@ -209,7 +209,7 @@ function ChatPage() {
     };
     setMessages((m) => [...m, optimistic]);
     const sentAttachment = attachment;
-    setInput("");
+    if (!override) setInput("");
     setAttachment(null);
     setSending(true);
     try {
@@ -447,6 +447,11 @@ function ChatPage() {
                 message={m}
                 onRegenerate={isLastAssistant ? regenerate : undefined}
                 onEdit={isLastUser ? (v) => editAndResend(m.id, v) : undefined}
+                onExplainError={({ language: lg, code, errorText }) =>
+                  send(
+                    `This ${lg} code failed when I ran it. Explain the actual error and give a corrected version.\n\nCode:\n\`\`\`${lg}\n${code}\n\`\`\`\n\nError output:\n\`\`\`\n${errorText}\n\`\`\``,
+                  )
+                }
                 sending={sending}
               />
             );
