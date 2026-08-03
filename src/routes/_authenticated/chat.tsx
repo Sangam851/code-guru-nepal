@@ -644,7 +644,7 @@ function ChatPage() {
             {transcribing ? <Loader2 className="h-4 w-4 animate-spin" /> : recording ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
           </Button>
           <Button
-            onClick={send}
+            onClick={() => void send()}
             disabled={sending || (!input.trim() && !attachment)}
             size="icon"
             className="h-12 w-12 shrink-0 bg-[image:var(--gradient-primary)] text-primary-foreground shadow-[var(--shadow-glow)]"
