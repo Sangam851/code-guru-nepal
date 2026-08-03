@@ -708,11 +708,13 @@ function MessageBubble({
   message,
   onRegenerate,
   onEdit,
+  onExplainError,
   sending,
 }: {
   message: Message;
   onRegenerate?: () => void | Promise<void>;
   onEdit?: (newContent: string) => void | Promise<void>;
+  onExplainError?: (payload: { language: string; code: string; errorText: string }) => void | Promise<void>;
   sending?: boolean;
 }) {
   const isUser = message.role === "user";
@@ -781,7 +783,7 @@ function MessageBubble({
       <div className="flex-1 min-w-0 space-y-3">
         {segments.map((seg, i) =>
           seg.type === "code" ? (
-            <CodeBlock key={i} language={seg.lang} value={seg.value} />
+            <CodeBlock key={i} language={seg.lang} value={seg.value} onExplainError={onExplainError} />
           ) : (
             <div
               key={i}
