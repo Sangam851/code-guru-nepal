@@ -5,6 +5,21 @@ import { useServerFn } from "@tanstack/react-start";
 import { executeCode } from "@/lib/chat.functions";
 
 const SANDBOX_LANGS = new Set(["html", "htm", "css"]);
+// Infer the language when the AI omits the fence tag, so Preview/Run still work.
+function inferLang(code: string): string {
+  const c = code.trim();
+  if (/^<!doctype html|<html[\s>]|<\/(div|body|head|h1|p)>/i.test(c)) return "html";
+  if (/^[.#@a-z][\w\-\s.#:>,\[\]="']*\{[^}]*:[^}]*\}/i.test(c) && !/;\s*$/.test(c.split("\n")[0] ?? "")) return "css";
+  if (/^\s*(#include\s*<|int\s+main\s*\()/m.test(c)) return /std::|iostream|cout/.test(c) ? "cpp" : "c";
+  if (/^\s*(def |import |from .+ import |print\()/m.test(c)) return "python";
+  if (/\bpublic\s+class\s+\w+|System\.out\.println/.test(c)) return "java";
+  if (/\busing\s+System\b|Console\.WriteLine/.test(c)) return "csharp";
+  if (/^\s*(package main|func main\()/m.test(c)) return "go";
+  if (/^\s*(SELECT|INSERT|UPDATE|CREATE TABLE)\b/im.test(c)) return "sql";
+  if (/\b(console\.log|function |const |let |=>)\b/.test(c)) return "javascript";
+  return "";
+}
+
 const PISTON_LANGS = new Set([
   "python", "py", "javascript", "js", "typescript", "ts", "java", "c", "cpp",
   "c++", "csharp", "c#", "go", "rust", "ruby", "php", "swift", "kotlin", "bash", "sh", "sql",
@@ -36,7 +51,8 @@ export function CodeBlock({
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const lang = (language || "").toLowerCase();
+  const declared = (language || "").toLowerCase();
+  const lang = declared && declared !== "text" && declared !== "plaintext" ? declared : inferLang(value);
   const isHtml = lang === "html" || lang === "htm" || /<html[\s>]|<!doctype html/i.test(value);
   const canPreview = isHtml || SANDBOX_LANGS.has(lang) || lang === "javascript" || lang === "js";
   const canSandbox = SANDBOX_LANGS.has(lang) || isHtml;
