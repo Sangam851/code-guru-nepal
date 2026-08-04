@@ -187,8 +187,8 @@ export const testProvider = createServerFn({ method: "POST" })
     try {
       let reply = "";
       if (data.provider === "mesh") {
-        const mesh = await import("./mesh.server");
-        const out = await mesh.meshChat(messages, { model: data.model, maxTokens: 16 });
+        const providers = await import("./providers.server");
+        const out = await providers.chatComplete(messages, data.model, { maxTokens: 16 });
         reply = out.reply;
       } else if (data.provider === "lovable") {
         const key = process.env.LOVABLE_API_KEY;
@@ -371,15 +371,16 @@ export const regenerateLast = createServerFn({ method: "POST" })
       ...(remaining.map((r) => ({ role: r.role, content: r.content })) as Msg[]),
     ];
 
-    const mesh = await import("./mesh.server");
+    const providers = await import("./providers.server");
     const { data: profile } = await supabase
       .from("profiles")
       .select("selected_model")
       .eq("user_id", userId)
       .maybeSingle();
-    const { reply } = await mesh.meshChat(messages, {
-      model: (profile?.selected_model as string | null) ?? null,
-    });
+    const { reply } = await providers.chatComplete(
+      messages,
+      (profile?.selected_model as string | null) ?? null,
+    );
 
     await supabase.from("messages").insert({
       conversation_id: data.conversationId,
@@ -488,15 +489,16 @@ export const editUserMessage = createServerFn({ method: "POST" })
       { role: "user", content: data.newContent },
     ];
 
-    const mesh = await import("./mesh.server");
+    const providers = await import("./providers.server");
     const { data: profile } = await supabase
       .from("profiles")
       .select("selected_model")
       .eq("user_id", userId)
       .maybeSingle();
-    const { reply } = await mesh.meshChat(messages, {
-      model: (profile?.selected_model as string | null) ?? null,
-    });
+    const { reply } = await providers.chatComplete(
+      messages,
+      (profile?.selected_model as string | null) ?? null,
+    );
 
     await supabase.from("messages").insert({
       conversation_id: data.conversationId,
@@ -517,8 +519,8 @@ export const editUserMessage = createServerFn({ method: "POST" })
 export const listMeshModels = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async () => {
-    const mesh = await import("./mesh.server");
-    return mesh.listMeshModelsSafe();
+    const providers = await import("./providers.server");
+    return providers.listAllModels();
   });
 
 // ---- Subscription tier ----
