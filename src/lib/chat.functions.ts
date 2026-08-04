@@ -289,10 +289,7 @@ export const runChat = createServerFn({ method: "POST" })
       { role: "user", content: lastUserContent },
     ];
 
-    // Mesh is the primary AI backend for every conversation.
-    const mesh = await import("./mesh.server");
-    mesh.requireMeshKey();
-
+    const providers = await import("./providers.server");
     const { data: profile } = await supabase
       .from("profiles")
       .select("subscription_tier, selected_model")
@@ -302,10 +299,13 @@ export const runChat = createServerFn({ method: "POST" })
     const requested = data.meshModel ?? (profile?.selected_model as string | null) ?? null;
 
     // Server-side Pro gate: never trust the client's model choice.
-    if (requested && tier !== "pro" && !(await mesh.isMeshModelFree(requested))) {
-      throw new Error("This is a Pro model. Please upgrade your subscription.");
+    if (requested && tier !== "pro" && !providers.isFreeModelId(requested)) {
+      const mesh = await import("./mesh.server");
+      if (!(await mesh.isMeshModelFree(requested))) {
+        throw new Error("This is a Pro model. Please upgrade your subscription.");
+      }
     }
-    const { reply } = await mesh.meshChat(messages, { model: requested });
+    const { reply } = await providers.chatComplete(messages, requested);
 
     await supabase.from("messages").insert({
       conversation_id: data.conversationId,
