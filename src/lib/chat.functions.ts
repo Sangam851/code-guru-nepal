@@ -83,7 +83,15 @@ async function tavilySearch(apiKey: string, query: string) {
 }
 
 function buildSystemPrompt(language: string, searchContext: string) {
-  return `You are Nepali Cooding AI — a premium expert programming assistant made in Nepal. The user's default topic is ${language.toUpperCase()}, but if they ask about another language answer in that language instead. Always: 1) start with a short plain-English explanation, 2) provide clean runnable code in a fenced block with the correct language tag (\`\`\`python, \`\`\`html, etc.), 3) mention edge cases or gotchas, 4) be warm, direct, and concise. Use markdown.${
+  return `You are Nepali Cooding AI — a premium expert programming assistant made in Nepal, built for professional developers as well as beginners. The user's default topic is ${language.toUpperCase()}, but if they ask about another language answer in that language instead.
+
+Rules:
+1. Start with a short, plain-English explanation of the approach (2-4 sentences max).
+2. Give complete, runnable, production-quality code in a fenced block with the correct language tag (\`\`\`python, \`\`\`c, \`\`\`html, ...). Never leave "..." placeholders. One concern per code block.
+3. NEVER invent or narrate program output. You cannot execute code — the app has a real "Run Code" button for that. Do not print fake terminal output or claim a result you did not compute.
+4. For debugging: identify the root cause first, then show the minimal corrected code, then explain why the fix works. Point out complexity, edge cases, security issues, and performance traps when relevant.
+5. Prefer idiomatic style, clear naming, error handling, and comments only where they add value.
+6. Be warm, direct and concise. Use markdown, and respond in Nepali/Nenglish if the user writes that way.${
     searchContext ? `\n\nLive web search results (use if useful):\n${searchContext}` : ""
   }`;
 }
@@ -187,8 +195,8 @@ export const testProvider = createServerFn({ method: "POST" })
     try {
       let reply = "";
       if (data.provider === "mesh") {
-        const mesh = await import("./mesh.server");
-        const out = await mesh.meshChat(messages, { model: data.model, maxTokens: 16 });
+        const providers = await import("./providers.server");
+        const out = await providers.chatComplete(messages, data.model, { maxTokens: 16 });
         reply = out.reply;
       } else if (data.provider === "lovable") {
         const key = process.env.LOVABLE_API_KEY;
@@ -289,10 +297,7 @@ export const runChat = createServerFn({ method: "POST" })
       { role: "user", content: lastUserContent },
     ];
 
-    // Mesh is the primary AI backend for every conversation.
-    const mesh = await import("./mesh.server");
-    mesh.requireMeshKey();
-
+    const providers = await import("./providers.server");
     const { data: profile } = await supabase
       .from("profiles")
       .select("subscription_tier, selected_model")
@@ -302,10 +307,13 @@ export const runChat = createServerFn({ method: "POST" })
     const requested = data.meshModel ?? (profile?.selected_model as string | null) ?? null;
 
     // Server-side Pro gate: never trust the client's model choice.
-    if (requested && tier !== "pro" && !(await mesh.isMeshModelFree(requested))) {
-      throw new Error("This is a Pro model. Please upgrade your subscription.");
+    if (requested && tier !== "pro" && !providers.isFreeModelId(requested)) {
+      const mesh = await import("./mesh.server");
+      if (!(await mesh.isMeshModelFree(requested))) {
+        throw new Error("This is a Pro model. Please upgrade your subscription.");
+      }
     }
-    const { reply } = await mesh.meshChat(messages, { model: requested });
+    const { reply } = await providers.chatComplete(messages, requested);
 
     await supabase.from("messages").insert({
       conversation_id: data.conversationId,
@@ -371,15 +379,16 @@ export const regenerateLast = createServerFn({ method: "POST" })
       ...(remaining.map((r) => ({ role: r.role, content: r.content })) as Msg[]),
     ];
 
-    const mesh = await import("./mesh.server");
+    const providers = await import("./providers.server");
     const { data: profile } = await supabase
       .from("profiles")
       .select("selected_model")
       .eq("user_id", userId)
       .maybeSingle();
-    const { reply } = await mesh.meshChat(messages, {
-      model: (profile?.selected_model as string | null) ?? null,
-    });
+    const { reply } = await providers.chatComplete(
+      messages,
+      (profile?.selected_model as string | null) ?? null,
+    );
 
     await supabase.from("messages").insert({
       conversation_id: data.conversationId,
@@ -488,15 +497,16 @@ export const editUserMessage = createServerFn({ method: "POST" })
       { role: "user", content: data.newContent },
     ];
 
-    const mesh = await import("./mesh.server");
+    const providers = await import("./providers.server");
     const { data: profile } = await supabase
       .from("profiles")
       .select("selected_model")
       .eq("user_id", userId)
       .maybeSingle();
-    const { reply } = await mesh.meshChat(messages, {
-      model: (profile?.selected_model as string | null) ?? null,
-    });
+    const { reply } = await providers.chatComplete(
+      messages,
+      (profile?.selected_model as string | null) ?? null,
+    );
 
     await supabase.from("messages").insert({
       conversation_id: data.conversationId,
@@ -517,8 +527,8 @@ export const editUserMessage = createServerFn({ method: "POST" })
 export const listMeshModels = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async () => {
-    const mesh = await import("./mesh.server");
-    return mesh.listMeshModelsSafe();
+    const providers = await import("./providers.server");
+    return providers.listAllModels();
   });
 
 // ---- Subscription tier ----

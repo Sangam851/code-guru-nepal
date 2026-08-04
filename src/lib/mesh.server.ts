@@ -146,14 +146,11 @@ export async function fetchMeshModels(force = false): Promise<MeshModel[]> {
 
 export async function listMeshModelsSafe(): Promise<{ free: MeshModel[]; pro: MeshModel[]; error?: string }> {
   try {
-    const all = await fetchMeshModels();
-    let free = all.filter((m) => m.free);
-    let pro = all.filter((m) => !m.free);
-    if (free.length === 0 && pro.length > 0) {
-      free = pro.slice(0, 4).map((m) => ({ ...m, free: true }));
-      pro = pro.slice(4);
-    }
-    return { free, pro };
+    // Only conversational models belong in the picker.
+    const all = (await fetchMeshModels()).filter(
+      (m) => !/moderation|embed|whisper|tts|audio|rerank|image|video|guard/i.test(m.id),
+    );
+    return { free: all.filter((m) => m.free), pro: all.filter((m) => !m.free) };
   } catch (e) {
     return { free: [], pro: [], error: (e as Error).message };
   }
