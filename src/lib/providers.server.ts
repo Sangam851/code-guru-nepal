@@ -87,7 +87,17 @@ export async function chatComplete(
     return { reply: await callLovable(model, messages, options.maxTokens), model: requested! };
   }
   const mesh = await import("./mesh.server");
-  return mesh.meshChat(messages, { model: requested ?? null, maxTokens: options.maxTokens });
+  try {
+    return await mesh.meshChat(messages, { model: requested ?? null, maxTokens: options.maxTokens });
+  } catch (e) {
+    // Keep the app usable when Mesh is down/unconfigured: fall back to a free model.
+    if (!process.env.LOVABLE_API_KEY) throw e;
+    const fallback = "google/gemini-3.6-flash";
+    return {
+      reply: await callLovable(fallback, messages, options.maxTokens),
+      model: `${LOVABLE_PREFIX}${fallback}`,
+    };
+  }
 }
 
 /** Full catalog: free Lovable models first, then whatever Mesh serves. */
