@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useServerFn } from "@tanstack/react-start";
 import { executeCode } from "@/lib/chat.functions";
 
-const SANDBOX_LANGS = new Set(["html", "htm", "css", "javascript", "js"]);
+const SANDBOX_LANGS = new Set(["html", "htm", "css"]);
 const PISTON_LANGS = new Set([
   "python", "py", "javascript", "js", "typescript", "ts", "java", "c", "cpp",
   "c++", "csharp", "c#", "go", "rust", "ruby", "php", "swift", "kotlin", "bash", "sh", "sql",
@@ -22,7 +22,13 @@ export function CodeBlock({
   const [copied, setCopied] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [running, setRunning] = useState(false);
-  const [runOutput, setRunOutput] = useState<null | { stdout?: string; stderr?: string; error?: string; sandboxDoc?: string }>(null);
+  const [runOutput, setRunOutput] = useState<null | {
+    stdout?: string;
+    stderr?: string;
+    error?: string;
+    exitCode?: number;
+    sandboxDoc?: string;
+  }>(null);
   const runFn = useServerFn(executeCode);
   const copy = async () => {
     await navigator.clipboard.writeText(value);
@@ -32,11 +38,12 @@ export function CodeBlock({
 
   const lang = (language || "").toLowerCase();
   const isHtml = lang === "html" || lang === "htm" || /<html[\s>]|<!doctype html/i.test(value);
-  const canPreview = isHtml || SANDBOX_LANGS.has(lang);
+  const canPreview = isHtml || SANDBOX_LANGS.has(lang) || lang === "javascript" || lang === "js";
   const canSandbox = SANDBOX_LANGS.has(lang) || isHtml;
   const canPiston = PISTON_LANGS.has(lang);
   const canRun = canSandbox || canPiston;
   const errorText = [runOutput?.error, runOutput?.stderr].filter(Boolean).join("\n").trim();
+  const hasRealError = Boolean(errorText) && !runOutput?.sandboxDoc;
 
   const srcDoc = useMemo(() => {
     if (!canPreview) return "";
@@ -66,7 +73,7 @@ export function CodeBlock({
       } else {
         const res = await runFn({ data: { language: lang, code: value } });
         if (!res.ok) setRunOutput({ error: res.error });
-        else setRunOutput({ stdout: res.stdout, stderr: res.stderr });
+        else setRunOutput({ stdout: res.stdout, stderr: res.stderr, exitCode: res.exitCode });
       }
     } catch (e) {
       setRunOutput({ error: e instanceof Error ? e.message : "Run failed" });
@@ -114,8 +121,11 @@ export function CodeBlock({
         <div className="flex items-center gap-2 px-3 py-1.5 border-t border-border/60 bg-[#141414]">
           <Button size="sm" variant="ghost" className="h-7 px-2 gap-1.5 text-xs" onClick={run} disabled={running}>
             {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5 text-primary" />}
-            {running ? "Running…" : "Run"}
+            {running ? "Running…" : canSandbox ? "Run" : "Run Code"}
           </Button>
+          {!canSandbox && (
+            <span className="text-[11px] text-muted-foreground">real execution via Piston API</span>
+          )}
           {runOutput && (
             <button
               onClick={() => setRunOutput(null)}
@@ -126,7 +136,7 @@ export function CodeBlock({
           )}
         </div>
       )}
-      {errorText && onExplainError && (
+      {hasRealError && onExplainError && (
         <div className="flex items-center gap-2 px-3 py-1.5 border-t border-border/60 bg-[#141414]">
           <Button
             size="sm"
