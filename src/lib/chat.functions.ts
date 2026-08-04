@@ -593,35 +593,90 @@ const ExecInput = z.object({
   stdin: z.string().max(50_000).optional(),
 });
 
+// Fallback runner (CodeX) used when the public Piston instance is unavailable.
+const CODEX_LANG: Record<string, string> = {
+  python: "py", py: "py",
+  javascript: "js", js: "js",
+  java: "java",
+  c: "c",
+  cpp: "cpp", "c++": "cpp",
+  csharp: "cs", "c#": "cs",
+  go: "go",
+};
+
+async function runOnPiston(data: { language: string; code: string; stdin?: string }) {
+  const cfg = PISTON_LANG[data.language.toLowerCase()];
+  if (!cfg) return null;
+  const res = await fetch("https://emkc.org/api/v2/piston/execute", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      language: cfg.language,
+      version: cfg.version,
+      files: [{ name: cfg.filename, content: data.code }],
+      stdin: data.stdin ?? "",
+      run_timeout: 8000,
+    }),
+  });
+  if (!res.ok) return null;
+  const json = (await res.json()) as {
+    message?: string;
+    run?: { stdout?: string; stderr?: string; code?: number };
+    compile?: { stderr?: string };
+  };
+  if (json.message || !json.run) return null;
+  const compileErr = json.compile?.stderr?.trim();
+  const stderr = json.run.stderr ?? "";
+  return {
+    ok: true as const,
+    stdout: json.run.stdout ?? "",
+    stderr: compileErr ? `${compileErr}\n${stderr}` : stderr,
+    exitCode: json.run.code ?? 0,
+    runner: "piston",
+  };
+}
+
+async function runOnCodex(data: { language: string; code: string; stdin?: string }) {
+  const lang = CODEX_LANG[data.language.toLowerCase()];
+  if (!lang) return null;
+  const res = await fetch("https://codex-api.fly.dev/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code: data.code, language: lang, input: data.stdin ?? "" }),
+  });
+  const json = (await res.json().catch(() => null)) as
+    | { output?: string; error?: string; status?: number }
+    | null;
+  if (!json) return null;
+  if (!res.ok && !json.output && !json.error) return null;
+  const stderr = (json.error ?? "").trim();
+  return {
+    ok: true as const,
+    stdout: json.output ?? "",
+    stderr,
+    exitCode: stderr ? 1 : 0,
+    runner: "codex",
+  };
+}
+
 export const executeCode = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => ExecInput.parse(data))
   .handler(async ({ data }) => {
-    const cfg = PISTON_LANG[data.language.toLowerCase()];
-    if (!cfg) return { ok: false, error: `Language "${data.language}" is not supported for execution.` };
-    const res = await fetch("https://emkc.org/api/v2/piston/execute", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        language: cfg.language,
-        version: cfg.version,
-        files: [{ name: cfg.filename, content: data.code }],
-        stdin: data.stdin ?? "",
-        run_timeout: 8000,
-      }),
-    });
-    if (!res.ok) return { ok: false, error: `Piston error ${res.status}: ${await res.text()}` };
-    const json = (await res.json()) as {
-      run?: { stdout?: string; stderr?: string; output?: string; code?: number };
-      compile?: { stderr?: string; output?: string };
-    };
-    const compileErr = json.compile?.stderr?.trim();
-    const stdout = json.run?.stdout ?? "";
-    const stderr = json.run?.stderr ?? "";
-    return {
-      ok: true,
-      stdout,
-      stderr: compileErr ? `${compileErr}\n${stderr}` : stderr,
-      exitCode: json.run?.code ?? 0,
-    };
+    if (!PISTON_LANG[data.language.toLowerCase()] && !CODEX_LANG[data.language.toLowerCase()]) {
+      return { ok: false, error: `Language "${data.language}" is not supported for execution.` };
+    }
+    try {
+      const piston = await runOnPiston(data);
+      if (piston) return piston;
+    } catch {
+      /* fall through to fallback runner */
+    }
+    try {
+      const codex = await runOnCodex(data);
+      if (codex) return codex;
+    } catch {
+      /* handled below */
+    }
+    return { ok: false, error: "Code execution service is unavailable right now. Please try again shortly." };
   });
