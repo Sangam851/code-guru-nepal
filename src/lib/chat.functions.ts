@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import { encodeAnswerMeta, siteName, type AnswerSource } from "./answer-meta";
 
 type ContentBlock =
   | { type: "text"; text: string }
@@ -74,12 +75,41 @@ async function tavilySearch(apiKey: string, query: string) {
     answer?: string;
     results?: Array<{ title: string; url: string; content: string }>;
   };
+  const results = data.results ?? [];
   const lines: string[] = [];
-  if (data.answer) lines.push(`Answer: ${data.answer}`);
-  for (const r of data.results ?? []) {
-    lines.push(`- ${r.title} (${r.url})\n  ${r.content?.slice(0, 400)}`);
+  if (data.answer) lines.push(`Summary: ${data.answer}`);
+  results.forEach((r, i) => {
+    lines.push(`[${i + 1}] ${r.title} (${r.url})\n  ${r.content?.slice(0, 400)}`);
+  });
+  const sources: AnswerSource[] = results.map((r) => ({
+    title: r.title,
+    url: r.url,
+    site: siteName(r.url),
+  }));
+  return { context: lines.join("\n"), sources };
+}
+
+// Run a search and never throw: a failed search should not kill the answer.
+async function safeSearch(query: string): Promise<{ context: string; sources: AnswerSource[] }> {
+  const key = process.env.TAVILY_API_KEY;
+  if (!key) return { context: "", sources: [] };
+  try {
+    return await tavilySearch(key, query);
+  } catch (e) {
+    return { context: `Web search failed: ${(e as Error).message}`, sources: [] };
   }
-  return lines.join("\n");
+}
+
+// Pull the trailing "FOLLOWUPS:" line the model emits for search answers.
+function extractFollowups(reply: string): { body: string; followups: string[] } {
+  const m = reply.match(/\n\s*FOLLOWUPS:\s*(.+)\s*$/i);
+  if (!m) return { body: reply, followups: [] };
+  const followups = m[1]
+    .split("|")
+    .map((s) => s.replace(/^[-•\d.\s]+/, "").trim())
+    .filter(Boolean)
+    .slice(0, 4);
+  return { body: reply.slice(0, m.index).trimEnd(), followups };
 }
 
 function buildSystemPrompt(language: string, searchContext: string) {
@@ -92,7 +122,14 @@ Rules:
 4. For debugging: identify the root cause first, then show the minimal corrected code, then explain why the fix works. Point out complexity, edge cases, security issues, and performance traps when relevant.
 5. Prefer idiomatic style, clear naming, error handling, and comments only where they add value.
 6. Be warm, direct and concise. Use markdown, and respond in Nepali/Nenglish if the user writes that way.${
-    searchContext ? `\n\nLive web search results (use if useful):\n${searchContext}` : ""
+    searchContext
+      ? `\n\nLive web search results (numbered sources):\n${searchContext}
+
+Web-answer rules (search was used for this turn):
+- Cite sources inline with bracketed numbers like [1] or [2] placed immediately after the specific sentence or claim they support. Use only the numbers listed above. Do not add a "Sources" list at the bottom — the app renders source cards.
+- End your entire reply with one final line in exactly this format:
+FOLLOWUPS: question one | question two | question three`
+      : ""
   }`;
 }
 
