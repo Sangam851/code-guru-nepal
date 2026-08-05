@@ -859,6 +859,14 @@ function MessageBubble({
 
 type Segment = { type: "text"; value: string } | { type: "code"; lang?: string; value: string };
 
+// Turn bare [1] markers in an answer into markdown links to the matching source.
+function linkCitations(text: string, sources: AnswerSource[]): string {
+  return text.replace(/\[(\d{1,2})\](?!\()/g, (full, n: string) => {
+    const src = sources[Number(n) - 1];
+    return src ? `[${n}](${src.url})` : full;
+  });
+}
+
 function splitSegments(content: string): Segment[] {
   const out: Segment[] = [];
   const re = /```(\w+)?\n?([\s\S]*?)```/g;
