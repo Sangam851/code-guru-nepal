@@ -14,6 +14,8 @@ import { NepalLogo } from "@/components/NepalLogo";
 import { LANGUAGES } from "@/lib/languages";
 import ReactMarkdown from "react-markdown";
 import { CodeBlock } from "@/components/CodeBlock";
+import { SourceCards, FollowUps } from "@/components/SearchSources";
+import { parseAnswer, type AnswerSource } from "@/lib/answer-meta";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -452,6 +454,7 @@ function ChatPage() {
                     `This ${lg} code failed when I ran it. Explain the actual error and give a corrected version.\n\nCode:\n\`\`\`${lg}\n${code}\n\`\`\`\n\nError output:\n\`\`\`\n${errorText}\n\`\`\``,
                   )
                 }
+                onFollowUp={(q) => send(q)}
                 sending={sending}
               />
             );
@@ -709,20 +712,23 @@ function MessageBubble({
   onRegenerate,
   onEdit,
   onExplainError,
+  onFollowUp,
   sending,
 }: {
   message: Message;
   onRegenerate?: () => void | Promise<void>;
   onEdit?: (newContent: string) => void | Promise<void>;
   onExplainError?: (payload: { language: string; code: string; errorText: string }) => void | Promise<void>;
+  onFollowUp?: (question: string) => void | Promise<void>;
   sending?: boolean;
 }) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.content);
+  const parsed = parseAnswer(message.content);
   const copyAll = async () => {
-    await navigator.clipboard.writeText(message.content);
+    await navigator.clipboard.writeText(isUser ? message.content : parsed.body);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
@@ -773,7 +779,9 @@ function MessageBubble({
 
   // Split assistant content into alternating text / fenced-code segments so
   // explanations render in their own box and each code block sits separately.
-  const segments = splitSegments(message.content);
+  const sources = parsed.meta?.sources ?? [];
+  const followups = parsed.meta?.followups ?? [];
+  const segments = splitSegments(parsed.body);
 
   return (
     <div className="flex gap-2 justify-start">
@@ -781,6 +789,7 @@ function MessageBubble({
         <NepalLogo size={20} />
       </div>
       <div className="flex-1 min-w-0 space-y-3">
+        {sources.length > 0 && <SourceCards sources={sources} />}
         {segments.map((seg, i) =>
           seg.type === "code" ? (
             <CodeBlock key={i} language={seg.lang} value={seg.value} onExplainError={onExplainError} />
@@ -798,12 +807,32 @@ function MessageBubble({
                       </code>
                     );
                   },
+                  a({ href, children }) {
+                    return (
+                      <a
+                        href={href}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className={cn(
+                          "no-underline",
+                          /^\d+$/.test(String(children))
+                            ? "align-super text-[10px] font-medium rounded bg-primary/15 text-primary px-1 py-px mx-0.5 hover:bg-primary/25"
+                            : "text-primary hover:underline",
+                        )}
+                      >
+                        {children}
+                      </a>
+                    );
+                  },
                 }}
               >
-                {seg.value}
+                {sources.length > 0 ? linkCitations(seg.value, sources) : seg.value}
               </ReactMarkdown>
             </div>
           ),
+        )}
+        {followups.length > 0 && onFollowUp && (
+          <FollowUps questions={followups} onPick={onFollowUp} disabled={sending} />
         )}
         <div className="flex items-center gap-3">
           <button
@@ -829,6 +858,14 @@ function MessageBubble({
 }
 
 type Segment = { type: "text"; value: string } | { type: "code"; lang?: string; value: string };
+
+// Turn bare [1] markers in an answer into markdown links to the matching source.
+function linkCitations(text: string, sources: AnswerSource[]): string {
+  return text.replace(/\[(\d{1,2})\](?!\()/g, (full, n: string) => {
+    const src = sources[Number(n) - 1];
+    return src ? `[${n}](${src.url})` : full;
+  });
+}
 
 function splitSegments(content: string): Segment[] {
   const out: Segment[] = [];

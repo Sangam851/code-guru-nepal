@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import { encodeAnswerMeta, siteName, type AnswerSource } from "./answer-meta";
 
 type ContentBlock =
   | { type: "text"; text: string }
@@ -74,12 +75,41 @@ async function tavilySearch(apiKey: string, query: string) {
     answer?: string;
     results?: Array<{ title: string; url: string; content: string }>;
   };
+  const results = data.results ?? [];
   const lines: string[] = [];
-  if (data.answer) lines.push(`Answer: ${data.answer}`);
-  for (const r of data.results ?? []) {
-    lines.push(`- ${r.title} (${r.url})\n  ${r.content?.slice(0, 400)}`);
+  if (data.answer) lines.push(`Summary: ${data.answer}`);
+  results.forEach((r, i) => {
+    lines.push(`[${i + 1}] ${r.title} (${r.url})\n  ${r.content?.slice(0, 400)}`);
+  });
+  const sources: AnswerSource[] = results.map((r) => ({
+    title: r.title,
+    url: r.url,
+    site: siteName(r.url),
+  }));
+  return { context: lines.join("\n"), sources };
+}
+
+// Run a search and never throw: a failed search should not kill the answer.
+async function safeSearch(query: string): Promise<{ context: string; sources: AnswerSource[] }> {
+  const key = process.env.TAVILY_API_KEY;
+  if (!key) return { context: "", sources: [] };
+  try {
+    return await tavilySearch(key, query);
+  } catch (e) {
+    return { context: `Web search failed: ${(e as Error).message}`, sources: [] };
   }
-  return lines.join("\n");
+}
+
+// Pull the trailing "FOLLOWUPS:" line the model emits for search answers.
+function extractFollowups(reply: string): { body: string; followups: string[] } {
+  const m = reply.match(/\n\s*FOLLOWUPS:\s*(.+)\s*$/i);
+  if (!m) return { body: reply, followups: [] };
+  const followups = m[1]
+    .split("|")
+    .map((s) => s.replace(/^[-•\d.\s]+/, "").trim())
+    .filter(Boolean)
+    .slice(0, 4);
+  return { body: reply.slice(0, m.index).trimEnd(), followups };
 }
 
 function buildSystemPrompt(language: string, searchContext: string) {
@@ -92,7 +122,14 @@ Rules:
 4. For debugging: identify the root cause first, then show the minimal corrected code, then explain why the fix works. Point out complexity, edge cases, security issues, and performance traps when relevant.
 5. Prefer idiomatic style, clear naming, error handling, and comments only where they add value.
 6. Be warm, direct and concise. Use markdown, and respond in Nepali/Nenglish if the user writes that way.${
-    searchContext ? `\n\nLive web search results (use if useful):\n${searchContext}` : ""
+    searchContext
+      ? `\n\nLive web search results (numbered sources):\n${searchContext}
+
+Web-answer rules (search was used for this turn):
+- Cite sources inline with bracketed numbers like [1] or [2] placed immediately after the specific sentence or claim they support. Use only the numbers listed above. Do not add a "Sources" list at the bottom — the app renders source cards.
+- End your entire reply with one final line in exactly this format:
+FOLLOWUPS: question one | question two | question three`
+      : ""
   }`;
 }
 
@@ -252,14 +289,12 @@ export const runChat = createServerFn({ method: "POST" })
 
     // Optional web search context
     let searchContext = "";
+    let sources: AnswerSource[] = [];
     if (data.webSearch) {
-      const tavilyKey = process.env.TAVILY_API_KEY;
-      if (!tavilyKey) throw new Error("Web search is not configured.");
-      try {
-        searchContext = await tavilySearch(tavilyKey, data.userMessage);
-      } catch (e) {
-        searchContext = `Web search failed: ${(e as Error).message}`;
-      }
+      if (!process.env.TAVILY_API_KEY) throw new Error("Web search is not configured.");
+      const out = await safeSearch(data.userMessage);
+      searchContext = out.context;
+      sources = out.sources;
     }
 
     // If the user explicitly names another language, follow that instead of the chip.
@@ -313,13 +348,18 @@ export const runChat = createServerFn({ method: "POST" })
         throw new Error("This is a Pro model. Please upgrade your subscription.");
       }
     }
-    const { reply } = await providers.chatComplete(messages, requested);
+    const { reply: raw } = await providers.chatComplete(messages, requested);
+    const { body, followups } = data.webSearch ? extractFollowups(raw) : { body: raw, followups: [] };
+    const stored =
+      data.webSearch && (sources.length > 0 || followups.length > 0)
+        ? body + encodeAnswerMeta({ sources, followups })
+        : body;
 
     await supabase.from("messages").insert({
       conversation_id: data.conversationId,
       user_id: userId,
       role: "assistant",
-      content: reply,
+      content: stored,
     });
 
     // Touch conversation, auto-title first exchange
@@ -327,7 +367,7 @@ export const runChat = createServerFn({ method: "POST" })
     if ((history ?? []).length === 0) patch.title = data.userMessage.slice(0, 60);
     await supabase.from("conversations").update(patch).eq("id", data.conversationId);
 
-    return { reply, language: effectiveLang, detected: detected !== null };
+    return { reply: body, language: effectiveLang, detected: detected !== null };
   });
 
 // Regenerate: delete the last assistant reply for this conversation and
@@ -364,12 +404,11 @@ export const regenerateLast = createServerFn({ method: "POST" })
     if (!lastUser) throw new Error("No user message to regenerate.");
 
     let searchContext = "";
+    let sources: AnswerSource[] = [];
     if (data.webSearch) {
-      const tavilyKey = process.env.TAVILY_API_KEY;
-      if (tavilyKey) {
-        try { searchContext = await tavilySearch(tavilyKey, lastUser.content); }
-        catch (e) { searchContext = `Web search failed: ${(e as Error).message}`; }
-      }
+      const out = await safeSearch(lastUser.content);
+      searchContext = out.context;
+      sources = out.sources;
     }
     const detected = detectLanguage(lastUser.content);
     const effectiveLang = detected ?? data.language;
@@ -385,23 +424,28 @@ export const regenerateLast = createServerFn({ method: "POST" })
       .select("selected_model")
       .eq("user_id", userId)
       .maybeSingle();
-    const { reply } = await providers.chatComplete(
+    const { reply: raw } = await providers.chatComplete(
       messages,
       (profile?.selected_model as string | null) ?? null,
     );
+    const { body, followups } = data.webSearch ? extractFollowups(raw) : { body: raw, followups: [] };
+    const stored =
+      data.webSearch && (sources.length > 0 || followups.length > 0)
+        ? body + encodeAnswerMeta({ sources, followups })
+        : body;
 
     await supabase.from("messages").insert({
       conversation_id: data.conversationId,
       user_id: userId,
       role: "assistant",
-      content: reply,
+      content: stored,
     });
     await supabase
       .from("conversations")
       .update({ updated_at: new Date().toISOString() })
       .eq("id", data.conversationId);
 
-    return { reply };
+    return { reply: body };
   });
 
 // Speech-to-text: accepts a base64-encoded audio recording (WAV recommended)
@@ -481,12 +525,11 @@ export const editUserMessage = createServerFn({ method: "POST" })
     const priorRows = rows.slice(0, idx);
 
     let searchContext = "";
+    let sources: AnswerSource[] = [];
     if (data.webSearch) {
-      const tavilyKey = process.env.TAVILY_API_KEY;
-      if (tavilyKey) {
-        try { searchContext = await tavilySearch(tavilyKey, data.newContent); }
-        catch (e) { searchContext = `Web search failed: ${(e as Error).message}`; }
-      }
+      const out = await safeSearch(data.newContent);
+      searchContext = out.context;
+      sources = out.sources;
     }
     const detected = detectLanguage(data.newContent);
     const effectiveLang = detected ?? data.language;
@@ -503,23 +546,28 @@ export const editUserMessage = createServerFn({ method: "POST" })
       .select("selected_model")
       .eq("user_id", userId)
       .maybeSingle();
-    const { reply } = await providers.chatComplete(
+    const { reply: raw } = await providers.chatComplete(
       messages,
       (profile?.selected_model as string | null) ?? null,
     );
+    const { body, followups } = data.webSearch ? extractFollowups(raw) : { body: raw, followups: [] };
+    const stored =
+      data.webSearch && (sources.length > 0 || followups.length > 0)
+        ? body + encodeAnswerMeta({ sources, followups })
+        : body;
 
     await supabase.from("messages").insert({
       conversation_id: data.conversationId,
       user_id: userId,
       role: "assistant",
-      content: reply,
+      content: stored,
     });
     await supabase
       .from("conversations")
       .update({ updated_at: new Date().toISOString() })
       .eq("id", data.conversationId);
 
-    return { reply };
+    return { reply: body };
   });
 
 // ---- Mesh model marketplace ----
@@ -607,6 +655,7 @@ const ExecInput = z.object({
 const CODEX_LANG: Record<string, string> = {
   python: "py", py: "py",
   javascript: "js", js: "js",
+  typescript: "js", ts: "js",
   java: "java",
   c: "c",
   cpp: "cpp", "c++": "cpp",
@@ -673,20 +722,32 @@ export const executeCode = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => ExecInput.parse(data))
   .handler(async ({ data }) => {
-    if (!PISTON_LANG[data.language.toLowerCase()] && !CODEX_LANG[data.language.toLowerCase()]) {
-      return { ok: false, error: `Language "${data.language}" is not supported for execution.` };
+    const lang = data.language.toLowerCase();
+    if (!PISTON_LANG[lang] && !CODEX_LANG[lang]) {
+      return {
+        ok: false,
+        error: `Language "${data.language}" can't be executed here. Supported: Python, JavaScript, TypeScript, Java, C, C++, C#, Go.`,
+      };
+    }
+    // CodeX is the primary runner (the public Piston API is whitelist-only now);
+    // Piston is still tried as a fallback for languages CodeX doesn't cover.
+    try {
+      const codex = await runOnCodex(data);
+      if (codex) return codex;
+    } catch {
+      /* fall through to Piston */
     }
     try {
       const piston = await runOnPiston(data);
       if (piston) return piston;
     } catch {
-      /* fall through to fallback runner */
-    }
-    try {
-      const codex = await runOnCodex(data);
-      if (codex) return codex;
-    } catch {
       /* handled below */
+    }
+    if (!CODEX_LANG[lang]) {
+      return {
+        ok: false,
+        error: `Execution for "${data.language}" is temporarily unavailable. Supported right now: Python, JavaScript, TypeScript, Java, C, C++, C#, Go.`,
+      };
     }
     return { ok: false, error: "Code execution service is unavailable right now. Please try again shortly." };
   });
