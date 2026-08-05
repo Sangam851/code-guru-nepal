@@ -289,14 +289,12 @@ export const runChat = createServerFn({ method: "POST" })
 
     // Optional web search context
     let searchContext = "";
+    let sources: AnswerSource[] = [];
     if (data.webSearch) {
-      const tavilyKey = process.env.TAVILY_API_KEY;
-      if (!tavilyKey) throw new Error("Web search is not configured.");
-      try {
-        searchContext = await tavilySearch(tavilyKey, data.userMessage);
-      } catch (e) {
-        searchContext = `Web search failed: ${(e as Error).message}`;
-      }
+      if (!process.env.TAVILY_API_KEY) throw new Error("Web search is not configured.");
+      const out = await safeSearch(data.userMessage);
+      searchContext = out.context;
+      sources = out.sources;
     }
 
     // If the user explicitly names another language, follow that instead of the chip.
@@ -350,13 +348,18 @@ export const runChat = createServerFn({ method: "POST" })
         throw new Error("This is a Pro model. Please upgrade your subscription.");
       }
     }
-    const { reply } = await providers.chatComplete(messages, requested);
+    const { reply: raw } = await providers.chatComplete(messages, requested);
+    const { body, followups } = data.webSearch ? extractFollowups(raw) : { body: raw, followups: [] };
+    const stored =
+      data.webSearch && (sources.length > 0 || followups.length > 0)
+        ? body + encodeAnswerMeta({ sources, followups })
+        : body;
 
     await supabase.from("messages").insert({
       conversation_id: data.conversationId,
       user_id: userId,
       role: "assistant",
-      content: reply,
+      content: stored,
     });
 
     // Touch conversation, auto-title first exchange
@@ -364,7 +367,7 @@ export const runChat = createServerFn({ method: "POST" })
     if ((history ?? []).length === 0) patch.title = data.userMessage.slice(0, 60);
     await supabase.from("conversations").update(patch).eq("id", data.conversationId);
 
-    return { reply, language: effectiveLang, detected: detected !== null };
+    return { reply: body, language: effectiveLang, detected: detected !== null };
   });
 
 // Regenerate: delete the last assistant reply for this conversation and
@@ -401,12 +404,11 @@ export const regenerateLast = createServerFn({ method: "POST" })
     if (!lastUser) throw new Error("No user message to regenerate.");
 
     let searchContext = "";
+    let sources: AnswerSource[] = [];
     if (data.webSearch) {
-      const tavilyKey = process.env.TAVILY_API_KEY;
-      if (tavilyKey) {
-        try { searchContext = await tavilySearch(tavilyKey, lastUser.content); }
-        catch (e) { searchContext = `Web search failed: ${(e as Error).message}`; }
-      }
+      const out = await safeSearch(lastUser.content);
+      searchContext = out.context;
+      sources = out.sources;
     }
     const detected = detectLanguage(lastUser.content);
     const effectiveLang = detected ?? data.language;
@@ -422,23 +424,28 @@ export const regenerateLast = createServerFn({ method: "POST" })
       .select("selected_model")
       .eq("user_id", userId)
       .maybeSingle();
-    const { reply } = await providers.chatComplete(
+    const { reply: raw } = await providers.chatComplete(
       messages,
       (profile?.selected_model as string | null) ?? null,
     );
+    const { body, followups } = data.webSearch ? extractFollowups(raw) : { body: raw, followups: [] };
+    const stored =
+      data.webSearch && (sources.length > 0 || followups.length > 0)
+        ? body + encodeAnswerMeta({ sources, followups })
+        : body;
 
     await supabase.from("messages").insert({
       conversation_id: data.conversationId,
       user_id: userId,
       role: "assistant",
-      content: reply,
+      content: stored,
     });
     await supabase
       .from("conversations")
       .update({ updated_at: new Date().toISOString() })
       .eq("id", data.conversationId);
 
-    return { reply };
+    return { reply: body };
   });
 
 // Speech-to-text: accepts a base64-encoded audio recording (WAV recommended)
