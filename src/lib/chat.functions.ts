@@ -655,6 +655,7 @@ const ExecInput = z.object({
 const CODEX_LANG: Record<string, string> = {
   python: "py", py: "py",
   javascript: "js", js: "js",
+  typescript: "js", ts: "js",
   java: "java",
   c: "c",
   cpp: "cpp", "c++": "cpp",
@@ -721,20 +722,32 @@ export const executeCode = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => ExecInput.parse(data))
   .handler(async ({ data }) => {
-    if (!PISTON_LANG[data.language.toLowerCase()] && !CODEX_LANG[data.language.toLowerCase()]) {
-      return { ok: false, error: `Language "${data.language}" is not supported for execution.` };
+    const lang = data.language.toLowerCase();
+    if (!PISTON_LANG[lang] && !CODEX_LANG[lang]) {
+      return {
+        ok: false,
+        error: `Language "${data.language}" can't be executed here. Supported: Python, JavaScript, TypeScript, Java, C, C++, C#, Go.`,
+      };
+    }
+    // CodeX is the primary runner (the public Piston API is whitelist-only now);
+    // Piston is still tried as a fallback for languages CodeX doesn't cover.
+    try {
+      const codex = await runOnCodex(data);
+      if (codex) return codex;
+    } catch {
+      /* fall through to Piston */
     }
     try {
       const piston = await runOnPiston(data);
       if (piston) return piston;
     } catch {
-      /* fall through to fallback runner */
-    }
-    try {
-      const codex = await runOnCodex(data);
-      if (codex) return codex;
-    } catch {
       /* handled below */
+    }
+    if (!CODEX_LANG[lang]) {
+      return {
+        ok: false,
+        error: `Execution for "${data.language}" is temporarily unavailable. Supported right now: Python, JavaScript, TypeScript, Java, C, C++, C#, Go.`,
+      };
     }
     return { ok: false, error: "Code execution service is unavailable right now. Please try again shortly." };
   });
