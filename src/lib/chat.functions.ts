@@ -525,12 +525,11 @@ export const editUserMessage = createServerFn({ method: "POST" })
     const priorRows = rows.slice(0, idx);
 
     let searchContext = "";
+    let sources: AnswerSource[] = [];
     if (data.webSearch) {
-      const tavilyKey = process.env.TAVILY_API_KEY;
-      if (tavilyKey) {
-        try { searchContext = await tavilySearch(tavilyKey, data.newContent); }
-        catch (e) { searchContext = `Web search failed: ${(e as Error).message}`; }
-      }
+      const out = await safeSearch(data.newContent);
+      searchContext = out.context;
+      sources = out.sources;
     }
     const detected = detectLanguage(data.newContent);
     const effectiveLang = detected ?? data.language;
@@ -547,23 +546,28 @@ export const editUserMessage = createServerFn({ method: "POST" })
       .select("selected_model")
       .eq("user_id", userId)
       .maybeSingle();
-    const { reply } = await providers.chatComplete(
+    const { reply: raw } = await providers.chatComplete(
       messages,
       (profile?.selected_model as string | null) ?? null,
     );
+    const { body, followups } = data.webSearch ? extractFollowups(raw) : { body: raw, followups: [] };
+    const stored =
+      data.webSearch && (sources.length > 0 || followups.length > 0)
+        ? body + encodeAnswerMeta({ sources, followups })
+        : body;
 
     await supabase.from("messages").insert({
       conversation_id: data.conversationId,
       user_id: userId,
       role: "assistant",
-      content: reply,
+      content: stored,
     });
     await supabase
       .from("conversations")
       .update({ updated_at: new Date().toISOString() })
       .eq("id", data.conversationId);
 
-    return { reply };
+    return { reply: body };
   });
 
 // ---- Mesh model marketplace ----
