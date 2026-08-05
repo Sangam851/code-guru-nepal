@@ -14,6 +14,8 @@ import { NepalLogo } from "@/components/NepalLogo";
 import { LANGUAGES } from "@/lib/languages";
 import ReactMarkdown from "react-markdown";
 import { CodeBlock } from "@/components/CodeBlock";
+import { SourceCards, FollowUps } from "@/components/SearchSources";
+import { parseAnswer, type AnswerSource } from "@/lib/answer-meta";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -452,6 +454,7 @@ function ChatPage() {
                     `This ${lg} code failed when I ran it. Explain the actual error and give a corrected version.\n\nCode:\n\`\`\`${lg}\n${code}\n\`\`\`\n\nError output:\n\`\`\`\n${errorText}\n\`\`\``,
                   )
                 }
+                onFollowUp={(q) => send(q)}
                 sending={sending}
               />
             );
