@@ -20,9 +20,10 @@ function inferLang(code: string): string {
   return "";
 }
 
+// Languages the execution backend can actually run today.
 const PISTON_LANGS = new Set([
   "python", "py", "javascript", "js", "typescript", "ts", "java", "c", "cpp",
-  "c++", "csharp", "c#", "go", "rust", "ruby", "php", "swift", "kotlin", "bash", "sh", "sql",
+  "c++", "csharp", "c#", "go",
 ]);
 
 export function CodeBlock({
@@ -140,7 +141,7 @@ export function CodeBlock({
             {running ? "Running…" : canSandbox ? "Run" : "Run Code"}
           </Button>
           {!canSandbox && (
-            <span className="text-[11px] text-muted-foreground">real execution via Piston API</span>
+            <span className="text-[11px] text-muted-foreground">real execution (live runner API)</span>
           )}
           {runOutput && (
             <button
