@@ -461,9 +461,12 @@ function ChatPage() {
             );
           })}
           {sending && (
-            <div className="flex gap-2 items-center text-muted-foreground text-sm px-1">
-              <Loader2 className="h-4 w-4 animate-spin text-primary" />
-              Thinking…
+            <div className="space-y-2 px-1">
+              {webSearch && <SourceCards sources={[]} loading />}
+              <div className="flex gap-2 items-center text-muted-foreground text-sm">
+                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                {webSearch ? "Searching & thinking…" : "Thinking…"}
+              </div>
             </div>
           )}
         </div>

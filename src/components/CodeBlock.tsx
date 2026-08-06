@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useServerFn } from "@tanstack/react-start";
 import { executeCode } from "@/lib/chat.functions";
+import { isRunnableLanguage, SUPPORTED_RUN_LANGUAGES } from "@/lib/exec-languages";
 
 const SANDBOX_LANGS = new Set(["html", "htm", "css"]);
 // Infer the language when the AI omits the fence tag, so Preview/Run still work.
@@ -19,12 +20,6 @@ function inferLang(code: string): string {
   if (/\b(console\.log|function |const |let |=>)\b/.test(c)) return "javascript";
   return "";
 }
-
-// Languages the execution backend can actually run today.
-const PISTON_LANGS = new Set([
-  "python", "py", "javascript", "js", "typescript", "ts", "java", "c", "cpp",
-  "c++", "csharp", "c#", "go",
-]);
 
 export function CodeBlock({
   language,
@@ -57,8 +52,9 @@ export function CodeBlock({
   const isHtml = lang === "html" || lang === "htm" || /<html[\s>]|<!doctype html/i.test(value);
   const canPreview = isHtml || SANDBOX_LANGS.has(lang) || lang === "javascript" || lang === "js";
   const canSandbox = SANDBOX_LANGS.has(lang) || isHtml;
-  const canPiston = PISTON_LANGS.has(lang);
-  const canRun = canSandbox || canPiston;
+  const canRemoteRun = isRunnableLanguage(lang);
+  const canRun = canSandbox || canRemoteRun;
+  const unsupported = Boolean(lang) && !canRun;
   const errorText = [runOutput?.error, runOutput?.stderr].filter(Boolean).join("\n").trim();
   const hasRealError = Boolean(errorText) && !runOutput?.sandboxDoc;
 
@@ -151,6 +147,11 @@ export function CodeBlock({
               <X className="h-3 w-3" /> Clear output
             </button>
           )}
+        </div>
+      )}
+      {unsupported && (
+        <div className="px-3 py-1.5 border-t border-border/60 bg-[#141414] text-[11px] text-muted-foreground">
+          Run isn’t available for {lang}. Supported: {SUPPORTED_RUN_LANGUAGES.join(", ")}.
         </div>
       )}
       {hasRealError && onExplainError && (
