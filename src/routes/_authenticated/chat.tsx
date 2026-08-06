@@ -16,6 +16,7 @@ import ReactMarkdown from "react-markdown";
 import { CodeBlock } from "@/components/CodeBlock";
 import { SourceCards, FollowUps } from "@/components/SearchSources";
 import { parseAnswer, type AnswerSource } from "@/lib/answer-meta";
+import { linkCitations, splitSegments } from "@/lib/answer-render";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
