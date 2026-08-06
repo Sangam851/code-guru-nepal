@@ -2,6 +2,16 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { encodeAnswerMeta, siteName, type AnswerSource } from "./answer-meta";
+import {
+  CODEX_LANG,
+  PISTON_LANG,
+  SQL_ALIASES,
+  buildSqlShim,
+  isRunnableLanguage,
+  normalizeLang,
+  runnerUnavailableMessage,
+  unsupportedLanguageMessage,
+} from "./exec-languages";
 
 type ContentBlock =
   | { type: "text"; text: string }
@@ -619,52 +629,15 @@ export const setSelectedModel = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-// ---- Piston code execution ----
-// Map our language ids to Piston-supported runtimes.
-const PISTON_LANG: Record<string, { language: string; version: string; filename: string }> = {
-  python: { language: "python", version: "3.10.0", filename: "main.py" },
-  py: { language: "python", version: "3.10.0", filename: "main.py" },
-  javascript: { language: "javascript", version: "18.15.0", filename: "main.js" },
-  js: { language: "javascript", version: "18.15.0", filename: "main.js" },
-  typescript: { language: "typescript", version: "5.0.3", filename: "main.ts" },
-  ts: { language: "typescript", version: "5.0.3", filename: "main.ts" },
-  java: { language: "java", version: "15.0.2", filename: "Main.java" },
-  c: { language: "c", version: "10.2.0", filename: "main.c" },
-  cpp: { language: "c++", version: "10.2.0", filename: "main.cpp" },
-  "c++": { language: "c++", version: "10.2.0", filename: "main.cpp" },
-  csharp: { language: "csharp.net", version: "5.0.201", filename: "main.cs" },
-  "c#": { language: "csharp.net", version: "5.0.201", filename: "main.cs" },
-  go: { language: "go", version: "1.16.2", filename: "main.go" },
-  rust: { language: "rust", version: "1.68.2", filename: "main.rs" },
-  ruby: { language: "ruby", version: "3.0.1", filename: "main.rb" },
-  php: { language: "php", version: "8.2.3", filename: "main.php" },
-  swift: { language: "swift", version: "5.3.3", filename: "main.swift" },
-  kotlin: { language: "kotlin", version: "1.8.20", filename: "main.kt" },
-  bash: { language: "bash", version: "5.2.0", filename: "main.sh" },
-  sh: { language: "bash", version: "5.2.0", filename: "main.sh" },
-  sql: { language: "sqlite3", version: "3.36.0", filename: "main.sql" },
-};
-
+// ---- Code execution ----
 const ExecInput = z.object({
   language: z.string().min(1).max(40),
   code: z.string().min(1).max(200_000),
   stdin: z.string().max(50_000).optional(),
 });
 
-// Fallback runner (CodeX) used when the public Piston instance is unavailable.
-const CODEX_LANG: Record<string, string> = {
-  python: "py", py: "py",
-  javascript: "js", js: "js",
-  typescript: "js", ts: "js",
-  java: "java",
-  c: "c",
-  cpp: "cpp", "c++": "cpp",
-  csharp: "cs", "c#": "cs",
-  go: "go",
-};
-
 async function runOnPiston(data: { language: string; code: string; stdin?: string }) {
-  const cfg = PISTON_LANG[data.language.toLowerCase()];
+  const cfg = PISTON_LANG[normalizeLang(data.language)];
   if (!cfg) return null;
   const res = await fetch("https://emkc.org/api/v2/piston/execute", {
     method: "POST",
@@ -696,12 +669,16 @@ async function runOnPiston(data: { language: string; code: string; stdin?: strin
 }
 
 async function runOnCodex(data: { language: string; code: string; stdin?: string }) {
-  const lang = CODEX_LANG[data.language.toLowerCase()];
+  const normalized = normalizeLang(data.language);
+  // SQL has no native runner: execute it through an SQLite shim on Python.
+  const isSql = SQL_ALIASES.has(normalized);
+  const lang = isSql ? "py" : CODEX_LANG[normalized];
   if (!lang) return null;
+  const code = isSql ? buildSqlShim(data.code) : data.code;
   const res = await fetch("https://codex-api.fly.dev/", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code: data.code, language: lang, input: data.stdin ?? "" }),
+    body: JSON.stringify({ code, language: lang, input: data.stdin ?? "" }),
   });
   const json = (await res.json().catch(() => null)) as
     | { output?: string; error?: string; status?: number }
@@ -722,12 +699,9 @@ export const executeCode = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => ExecInput.parse(data))
   .handler(async ({ data }) => {
-    const lang = data.language.toLowerCase();
-    if (!PISTON_LANG[lang] && !CODEX_LANG[lang]) {
-      return {
-        ok: false,
-        error: `Language "${data.language}" can't be executed here. Supported: Python, JavaScript, TypeScript, Java, C, C++, C#, Go.`,
-      };
+    const lang = normalizeLang(data.language);
+    if (!isRunnableLanguage(lang)) {
+      return { ok: false, error: unsupportedLanguageMessage(data.language) };
     }
     // CodeX is the primary runner (the public Piston API is whitelist-only now);
     // Piston is still tried as a fallback for languages CodeX doesn't cover.
@@ -743,11 +717,5 @@ export const executeCode = createServerFn({ method: "POST" })
     } catch {
       /* handled below */
     }
-    if (!CODEX_LANG[lang]) {
-      return {
-        ok: false,
-        error: `Execution for "${data.language}" is temporarily unavailable. Supported right now: Python, JavaScript, TypeScript, Java, C, C++, C#, Go.`,
-      };
-    }
-    return { ok: false, error: "Code execution service is unavailable right now. Please try again shortly." };
+    return { ok: false, error: runnerUnavailableMessage() };
   });

@@ -857,32 +857,6 @@ function MessageBubble({
   );
 }
 
-type Segment = { type: "text"; value: string } | { type: "code"; lang?: string; value: string };
-
-// Turn bare [1] markers in an answer into markdown links to the matching source.
-function linkCitations(text: string, sources: AnswerSource[]): string {
-  return text.replace(/\[(\d{1,2})\](?!\()/g, (full, n: string) => {
-    const src = sources[Number(n) - 1];
-    return src ? `[${n}](${src.url})` : full;
-  });
-}
-
-function splitSegments(content: string): Segment[] {
-  const out: Segment[] = [];
-  const re = /```(\w+)?\n?([\s\S]*?)```/g;
-  let last = 0;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(content)) !== null) {
-    const text = content.slice(last, m.index).trim();
-    if (text) out.push({ type: "text", value: text });
-    out.push({ type: "code", lang: m[1], value: m[2].replace(/\n$/, "") });
-    last = m.index + m[0].length;
-  }
-  const tail = content.slice(last).trim();
-  if (tail) out.push({ type: "text", value: tail });
-  if (out.length === 0) out.push({ type: "text", value: content });
-  return out;
-}
 
 // Downsample+encode Float32 PCM chunks into a mono 16-bit WAV Blob-ready buffer.
 function encodeWav(chunks: Float32Array[], sampleRate: number, target = 16000): ArrayBuffer {
