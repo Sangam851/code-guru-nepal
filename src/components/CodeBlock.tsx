@@ -40,6 +40,7 @@ export function CodeBlock({
     error?: string;
     exitCode?: number;
     sandboxDoc?: string;
+    rateLimited?: boolean;
   }>(null);
   const runFn = useServerFn(executeCode);
   const copy = async () => {
@@ -58,7 +59,7 @@ export function CodeBlock({
   const canRun = canSandbox || canRemoteRun;
   const unsupported = Boolean(lang) && !canRun;
   const errorText = [runOutput?.error, runOutput?.stderr].filter(Boolean).join("\n").trim();
-  const hasRealError = Boolean(errorText) && !runOutput?.sandboxDoc;
+  const hasRealError = Boolean(errorText) && !runOutput?.sandboxDoc && !runOutput?.rateLimited;
 
   const srcDoc = useMemo(() => {
     if (!canPreview) return "";
@@ -91,7 +92,11 @@ export function CodeBlock({
         setRunOutput({ stdout, stderr, exitCode: stderr ? 1 : 0 });
       } else {
         const res = await runFn({ data: { language: lang, code: value } });
-        if (!res.ok) setRunOutput({ error: res.error });
+        if (!res.ok)
+          setRunOutput({
+            error: res.error,
+            rateLimited: "rateLimited" in res ? Boolean(res.rateLimited) : false,
+          });
         else setRunOutput({ stdout: res.stdout, stderr: res.stderr, exitCode: res.exitCode });
       }
     } catch (e) {
