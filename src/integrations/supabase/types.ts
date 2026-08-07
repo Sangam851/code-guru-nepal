@@ -41,6 +41,30 @@ export type Database = {
         }
         Relationships: []
       }
+      execution_rate_limits: {
+        Row: {
+          created_at: string
+          request_count: number
+          updated_at: string
+          user_id: string
+          window_start: string
+        }
+        Insert: {
+          created_at?: string
+          request_count?: number
+          updated_at?: string
+          user_id: string
+          window_start?: string
+        }
+        Update: {
+          created_at?: string
+          request_count?: number
+          updated_at?: string
+          user_id?: string
+          window_start?: string
+        }
+        Relationships: []
+      }
       messages: {
         Row: {
           content: string
@@ -132,7 +156,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      consume_execution_quota: {
+        Args: { _limit?: number; _user_id: string; _window_seconds?: number }
+        Returns: {
+          allowed: boolean
+          remaining: number
+          retry_after_seconds: number
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
