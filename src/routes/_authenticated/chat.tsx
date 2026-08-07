@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Loader2, Menu, Plus, Send, Settings as SettingsIcon, Globe, Trash2, MessageSquare, Zap, Copy, Check, RefreshCw, Pencil, X, Mic, Camera, Paperclip, Square, FileText, Image as ImageIcon, Lock, Sparkles, Crown, Search } from "lucide-react";
+import { Loader2, Menu, Plus, Send, Settings as SettingsIcon, Globe, Trash2, MessageSquare, Zap, Copy, Check, RefreshCw, Pencil, X, Mic, Camera, Paperclip, Square, FileText, Image as ImageIcon, Lock, Sparkles, Crown, Search, ChevronDown } from "lucide-react";
 import { NepalLogo } from "@/components/NepalLogo";
 import { LANGUAGES } from "@/lib/languages";
 import ReactMarkdown from "react-markdown";
@@ -47,6 +47,7 @@ function ChatPage() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [tier, setTier] = useState<"free" | "pro">("free");
   const [meshModel, setMeshModel] = useState<string | null>(null);
+  const [modelsOpen, setModelsOpen] = useState(false);
   const [models, setModels] = useState<{ free: { id: string; label: string }[]; pro: { id: string; label: string }[] }>({ free: [], pro: [] });
   const [modelQuery, setModelQuery] = useState("");
   const [modelFamily, setModelFamily] = useState<string>("all");
@@ -54,6 +55,7 @@ function ChatPage() {
   const [modelSort, setModelSort] = useState<"name-asc" | "name-desc" | "family">("name-asc");
   const navigate = Route.useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [attachment, setAttachment] = useState<null | {
@@ -162,11 +164,26 @@ function ChatPage() {
         setModels({ free: ms.free, pro: ms.pro });
         setTier(sub.tier);
         if (sub.selectedModel) setMeshModel(sub.selectedModel);
+        else {
+          const stored = typeof window !== "undefined" ? window.localStorage.getItem("nca:model") : null;
+          if (stored) setMeshModel(stored);
+        }
       } catch {
         /* mesh optional */
       }
     })();
   }, [listModelsFn, getSubFn]);
+
+  // Auto-grow the composer up to a cap, then let it scroll internally.
+  const autoGrow = () => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 320)}px`;
+  };
+  useEffect(() => {
+    autoGrow();
+  }, [input]);
 
   const pickModel = async (id: string, isFree: boolean) => {
     if (!isFree && tier !== "pro") {
@@ -174,12 +191,16 @@ function ChatPage() {
       return;
     }
     setMeshModel(id);
+    if (typeof window !== "undefined") window.localStorage.setItem("nca:model", id);
+    setModelsOpen(false);
     try { await saveModelFn({ data: { model: id } }); } catch { /* ignore */ }
     toast.success(`Model: ${id}`);
   };
 
   const clearModel = async () => {
     setMeshModel(null);
+    if (typeof window !== "undefined") window.localStorage.removeItem("nca:model");
+    setModelsOpen(false);
     try { await saveModelFn({ data: { model: null } }); } catch { /* ignore */ }
   };
 
