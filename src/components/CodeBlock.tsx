@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useServerFn } from "@tanstack/react-start";
 import { executeCode } from "@/lib/chat.functions";
 import { isRunnableLanguage, SUPPORTED_RUN_LANGUAGES } from "@/lib/exec-languages";
+import { runPython } from "@/lib/pyodide-runner";
 
 const SANDBOX_LANGS = new Set(["html", "htm", "css"]);
 // Infer the language when the AI omits the fence tag, so Preview/Run still work.
@@ -53,6 +54,7 @@ export function CodeBlock({
   const canPreview = isHtml || SANDBOX_LANGS.has(lang) || lang === "javascript" || lang === "js";
   const canSandbox = SANDBOX_LANGS.has(lang) || isHtml;
   const canRemoteRun = isRunnableLanguage(lang);
+  const isPython = lang === "python" || lang === "py";
   const canRun = canSandbox || canRemoteRun;
   const unsupported = Boolean(lang) && !canRun;
   const errorText = [runOutput?.error, runOutput?.stderr].filter(Boolean).join("\n").trim();
@@ -83,6 +85,10 @@ export function CodeBlock({
     try {
       if (canSandbox) {
         setRunOutput({ sandboxDoc: srcDoc || value });
+      } else if (isPython) {
+        // Runs entirely in the browser via Pyodide (WebAssembly).
+        const { stdout, stderr } = await runPython(value);
+        setRunOutput({ stdout, stderr, exitCode: stderr ? 1 : 0 });
       } else {
         const res = await runFn({ data: { language: lang, code: value } });
         if (!res.ok) setRunOutput({ error: res.error });
@@ -137,7 +143,9 @@ export function CodeBlock({
             {running ? "Running…" : canSandbox ? "Run" : "Run Code"}
           </Button>
           {!canSandbox && (
-            <span className="text-[11px] text-muted-foreground">real execution (live runner API)</span>
+            <span className="text-[11px] text-muted-foreground">
+              {isPython ? "runs in your browser (Pyodide)" : "real execution (live runner API)"}
+            </span>
           )}
           {runOutput && (
             <button
