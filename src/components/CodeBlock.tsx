@@ -40,6 +40,7 @@ export function CodeBlock({
     error?: string;
     exitCode?: number;
     sandboxDoc?: string;
+    rateLimited?: boolean;
   }>(null);
   const runFn = useServerFn(executeCode);
   const copy = async () => {
@@ -58,7 +59,7 @@ export function CodeBlock({
   const canRun = canSandbox || canRemoteRun;
   const unsupported = Boolean(lang) && !canRun;
   const errorText = [runOutput?.error, runOutput?.stderr].filter(Boolean).join("\n").trim();
-  const hasRealError = Boolean(errorText) && !runOutput?.sandboxDoc;
+  const hasRealError = Boolean(errorText) && !runOutput?.sandboxDoc && !runOutput?.rateLimited;
 
   const srcDoc = useMemo(() => {
     if (!canPreview) return "";
@@ -91,7 +92,11 @@ export function CodeBlock({
         setRunOutput({ stdout, stderr, exitCode: stderr ? 1 : 0 });
       } else {
         const res = await runFn({ data: { language: lang, code: value } });
-        if (!res.ok) setRunOutput({ error: res.error });
+        if (!res.ok)
+          setRunOutput({
+            error: res.error,
+            rateLimited: "rateLimited" in res ? Boolean(res.rateLimited) : false,
+          });
         else setRunOutput({ stdout: res.stdout, stderr: res.stderr, exitCode: res.exitCode });
       }
     } catch (e) {
@@ -174,6 +179,12 @@ export function CodeBlock({
           </Button>
         </div>
       )}
+      {runOutput?.rateLimited && (
+        <div className="border-t border-border/60 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-300 flex items-start gap-2">
+          <span aria-hidden>⏳</span>
+          <span>{runOutput.error}</span>
+        </div>
+      )}
       {runOutput?.sandboxDoc && (
         <iframe
           title="Sandbox run"
@@ -183,7 +194,7 @@ export function CodeBlock({
           style={{ height: 280, border: 0 }}
         />
       )}
-      {runOutput && !runOutput.sandboxDoc && (
+      {runOutput && !runOutput.sandboxDoc && !runOutput.rateLimited && (
         <div className="border-t border-border/60 bg-[#0a0a0a] px-3 py-2 text-[12px] font-mono whitespace-pre-wrap max-h-64 overflow-auto">
           {runOutput.error && <div className="text-destructive">{runOutput.error}</div>}
           {runOutput.stdout && <div className="text-foreground/90">{runOutput.stdout}</div>}

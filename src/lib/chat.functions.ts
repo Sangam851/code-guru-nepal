@@ -4,9 +4,12 @@ import { z } from "zod";
 import { encodeAnswerMeta, siteName, type AnswerSource } from "./answer-meta";
 import {
   CODEX_LANG,
+  EXEC_RATE_LIMIT,
+  EXEC_RATE_WINDOW_SECONDS,
   PISTON_LANG,
   SQL_ALIASES,
   buildSqlShim,
+  capOutput,
   isRunnableLanguage,
   normalizeLang,
   runnerUnavailableMessage,
@@ -700,22 +703,44 @@ async function runOnCodex(data: { language: string; code: string; stdin?: string
 export const executeCode = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => ExecInput.parse(data))
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
     const lang = normalizeLang(data.language);
     if (!isRunnableLanguage(lang)) {
       return { ok: false, error: unsupportedLanguageMessage(data.language) };
     }
+
+    // Sliding-window rate limit: 10 backend runs per 60s per user.
+    try {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { data: quota } = await supabaseAdmin.rpc("consume_execution_quota", {
+        _user_id: context.userId,
+        _limit: EXEC_RATE_LIMIT,
+        _window_seconds: EXEC_RATE_WINDOW_SECONDS,
+      });
+      const row = Array.isArray(quota) ? quota[0] : quota;
+      if (row && row.allowed === false) {
+        return {
+          ok: false,
+          rateLimited: true,
+          retryAfterSeconds: row.retry_after_seconds ?? EXEC_RATE_WINDOW_SECONDS,
+          error: `You're running code too quickly — wait ${row.retry_after_seconds ?? EXEC_RATE_WINDOW_SECONDS}s and try again.`,
+        };
+      }
+    } catch {
+      /* never block execution on a quota bookkeeping failure */
+    }
+
     // CodeX is the primary runner (the public Piston API is whitelist-only now);
     // Piston is still tried as a fallback for languages CodeX doesn't cover.
     try {
       const codex = await runOnCodex(data);
-      if (codex) return codex;
+      if (codex) return capOutput(codex);
     } catch {
       /* fall through to Piston */
     }
     try {
       const piston = await runOnPiston(data);
-      if (piston) return piston;
+      if (piston) return capOutput(piston);
     } catch {
       /* handled below */
     }

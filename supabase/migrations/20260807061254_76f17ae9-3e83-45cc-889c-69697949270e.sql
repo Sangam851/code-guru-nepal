@@ -1,0 +1,2 @@
+REVOKE EXECUTE ON FUNCTION public.consume_execution_quota(uuid, integer, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.consume_execution_quota(uuid, integer, integer) TO service_role;
