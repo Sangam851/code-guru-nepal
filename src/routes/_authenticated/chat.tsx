@@ -519,9 +519,38 @@ function ChatPage() {
         const freeShown = modelTier === "pro" ? [] : filterList(models.free);
         const proShown = modelTier === "free" ? [] : filterList(models.pro);
         const totalShown = freeShown.length + proShown.length;
+        const activeLabel =
+          [...models.free, ...models.pro].find((m) => m.id === meshModel)?.label ?? "Default (auto)";
+        const activeTier = meshModel
+          ? models.pro.some((m) => m.id === meshModel) ? "Pro" : "Free"
+          : "Auto";
         return (
           <div className="border-t border-border/50 bg-background/60 backdrop-blur-xl px-3 py-2">
             <div className="max-w-2xl mx-auto space-y-1.5">
+              <button
+                type="button"
+                onClick={() => setModelsOpen((o) => !o)}
+                aria-expanded={modelsOpen}
+                className="w-full flex items-center gap-2 rounded-xl border border-border/60 bg-card/50 hover:bg-card px-3 py-2 text-xs transition"
+              >
+                {activeTier === "Pro" ? (
+                  <Crown className="h-3.5 w-3.5 text-primary" />
+                ) : (
+                  <Sparkles className="h-3.5 w-3.5 text-primary" />
+                )}
+                <span className="truncate font-medium">{activeLabel}</span>
+                <span className="shrink-0 rounded-full border border-border/60 px-1.5 py-px text-[10px] uppercase tracking-wider text-muted-foreground">
+                  {activeTier}
+                </span>
+                <ChevronDown
+                  className={cn("ml-auto h-4 w-4 text-muted-foreground transition-transform duration-300", modelsOpen && "rotate-180")}
+                />
+              </button>
+              <div
+                className="overflow-hidden transition-[max-height,opacity] duration-300 ease-in-out"
+                style={{ maxHeight: modelsOpen ? 420 : 0, opacity: modelsOpen ? 1 : 0 }}
+              >
+              <div className="space-y-1.5 pt-1">
               <div className="flex items-center gap-1.5 flex-wrap">
                 <div className="relative flex-1 min-w-[140px]">
                   <Search className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -590,6 +619,8 @@ function ChatPage() {
                   />
                 </>
               )}
+              </div>
+              </div>
             </div>
           </div>
         );
