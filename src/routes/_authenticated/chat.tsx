@@ -680,8 +680,10 @@ function ChatPage() {
             </Button>
           </div>
           <Textarea
+            ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onPaste={() => requestAnimationFrame(autoGrow)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -690,7 +692,7 @@ function ChatPage() {
             }}
             placeholder={`Ask anything about ${LANGUAGES.find((l) => l.id === language)?.label ?? "code"}…`}
             rows={1}
-            className="min-h-[48px] max-h-40 resize-none bg-input/60 border-border/70"
+            className="min-h-[48px] max-h-[320px] overflow-y-auto resize-none bg-input/60 border-border/70"
           />
           <Button
             onClick={recording ? stopRecording : startRecording}
