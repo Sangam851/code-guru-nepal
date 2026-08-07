@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Loader2, Menu, Plus, Send, Settings as SettingsIcon, Globe, Trash2, MessageSquare, Zap, Copy, Check, RefreshCw, Pencil, X, Mic, Camera, Paperclip, Square, FileText, Image as ImageIcon, Lock, Sparkles, Crown, Search } from "lucide-react";
+import { Loader2, Menu, Plus, Send, Settings as SettingsIcon, Globe, Trash2, MessageSquare, Zap, Copy, Check, RefreshCw, Pencil, X, Mic, Camera, Paperclip, Square, FileText, Image as ImageIcon, Lock, Sparkles, Crown, Search, ChevronDown } from "lucide-react";
 import { NepalLogo } from "@/components/NepalLogo";
 import { LANGUAGES } from "@/lib/languages";
 import ReactMarkdown from "react-markdown";
@@ -47,6 +47,7 @@ function ChatPage() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [tier, setTier] = useState<"free" | "pro">("free");
   const [meshModel, setMeshModel] = useState<string | null>(null);
+  const [modelsOpen, setModelsOpen] = useState(false);
   const [models, setModels] = useState<{ free: { id: string; label: string }[]; pro: { id: string; label: string }[] }>({ free: [], pro: [] });
   const [modelQuery, setModelQuery] = useState("");
   const [modelFamily, setModelFamily] = useState<string>("all");
@@ -54,6 +55,7 @@ function ChatPage() {
   const [modelSort, setModelSort] = useState<"name-asc" | "name-desc" | "family">("name-asc");
   const navigate = Route.useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [attachment, setAttachment] = useState<null | {
@@ -162,11 +164,26 @@ function ChatPage() {
         setModels({ free: ms.free, pro: ms.pro });
         setTier(sub.tier);
         if (sub.selectedModel) setMeshModel(sub.selectedModel);
+        else {
+          const stored = typeof window !== "undefined" ? window.localStorage.getItem("nca:model") : null;
+          if (stored) setMeshModel(stored);
+        }
       } catch {
         /* mesh optional */
       }
     })();
   }, [listModelsFn, getSubFn]);
+
+  // Auto-grow the composer up to a cap, then let it scroll internally.
+  const autoGrow = () => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 320)}px`;
+  };
+  useEffect(() => {
+    autoGrow();
+  }, [input]);
 
   const pickModel = async (id: string, isFree: boolean) => {
     if (!isFree && tier !== "pro") {
@@ -174,12 +191,16 @@ function ChatPage() {
       return;
     }
     setMeshModel(id);
+    if (typeof window !== "undefined") window.localStorage.setItem("nca:model", id);
+    setModelsOpen(false);
     try { await saveModelFn({ data: { model: id } }); } catch { /* ignore */ }
     toast.success(`Model: ${id}`);
   };
 
   const clearModel = async () => {
     setMeshModel(null);
+    if (typeof window !== "undefined") window.localStorage.removeItem("nca:model");
+    setModelsOpen(false);
     try { await saveModelFn({ data: { model: null } }); } catch { /* ignore */ }
   };
 
@@ -498,9 +519,38 @@ function ChatPage() {
         const freeShown = modelTier === "pro" ? [] : filterList(models.free);
         const proShown = modelTier === "free" ? [] : filterList(models.pro);
         const totalShown = freeShown.length + proShown.length;
+        const activeLabel =
+          [...models.free, ...models.pro].find((m) => m.id === meshModel)?.label ?? "Default (auto)";
+        const activeTier = meshModel
+          ? models.pro.some((m) => m.id === meshModel) ? "Pro" : "Free"
+          : "Auto";
         return (
           <div className="border-t border-border/50 bg-background/60 backdrop-blur-xl px-3 py-2">
             <div className="max-w-2xl mx-auto space-y-1.5">
+              <button
+                type="button"
+                onClick={() => setModelsOpen((o) => !o)}
+                aria-expanded={modelsOpen}
+                className="w-full flex items-center gap-2 rounded-xl border border-border/60 bg-card/50 hover:bg-card px-3 py-2 text-xs transition"
+              >
+                {activeTier === "Pro" ? (
+                  <Crown className="h-3.5 w-3.5 text-primary" />
+                ) : (
+                  <Sparkles className="h-3.5 w-3.5 text-primary" />
+                )}
+                <span className="truncate font-medium">{activeLabel}</span>
+                <span className="shrink-0 rounded-full border border-border/60 px-1.5 py-px text-[10px] uppercase tracking-wider text-muted-foreground">
+                  {activeTier}
+                </span>
+                <ChevronDown
+                  className={cn("ml-auto h-4 w-4 text-muted-foreground transition-transform duration-300", modelsOpen && "rotate-180")}
+                />
+              </button>
+              <div
+                className="overflow-hidden transition-[max-height,opacity] duration-300 ease-in-out"
+                style={{ maxHeight: modelsOpen ? 420 : 0, opacity: modelsOpen ? 1 : 0 }}
+              >
+              <div className="space-y-1.5 pt-1">
               <div className="flex items-center gap-1.5 flex-wrap">
                 <div className="relative flex-1 min-w-[140px]">
                   <Search className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -569,6 +619,8 @@ function ChatPage() {
                   />
                 </>
               )}
+              </div>
+              </div>
             </div>
           </div>
         );
@@ -628,8 +680,10 @@ function ChatPage() {
             </Button>
           </div>
           <Textarea
+            ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onPaste={() => requestAnimationFrame(autoGrow)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -638,7 +692,7 @@ function ChatPage() {
             }}
             placeholder={`Ask anything about ${LANGUAGES.find((l) => l.id === language)?.label ?? "code"}…`}
             rows={1}
-            className="min-h-[48px] max-h-40 resize-none bg-input/60 border-border/70"
+            className="min-h-[48px] max-h-[320px] overflow-y-auto resize-none bg-input/60 border-border/70"
           />
           <Button
             onClick={recording ? stopRecording : startRecording}
