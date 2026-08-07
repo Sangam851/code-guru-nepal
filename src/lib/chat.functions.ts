@@ -649,6 +649,7 @@ async function runOnPiston(data: { language: string; code: string; stdin?: strin
       stdin: data.stdin ?? "",
       run_timeout: 8000,
     }),
+    signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) return null;
   const json = (await res.json()) as {
@@ -679,6 +680,7 @@ async function runOnCodex(data: { language: string; code: string; stdin?: string
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ code, language: lang, input: data.stdin ?? "" }),
+    signal: AbortSignal.timeout(15_000),
   });
   const json = (await res.json().catch(() => null)) as
     | { output?: string; error?: string; status?: number }
