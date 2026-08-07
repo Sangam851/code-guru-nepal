@@ -97,3 +97,19 @@ export function buildSqlShim(sql: string): string {
     "con.commit()",
   ].join("\n");
 }
+
+/** Backend run quota: 10 executions per 60-second sliding window, per user. */
+export const EXEC_RATE_LIMIT = 10;
+export const EXEC_RATE_WINDOW_SECONDS = 60;
+
+/** Max bytes of stdout/stderr returned to the client (100KB each). */
+export const EXEC_OUTPUT_LIMIT = 100_000;
+
+export function capText(text: string, limit = EXEC_OUTPUT_LIMIT): string {
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit)}\n… output truncated at ${Math.round(limit / 1000)}KB …`;
+}
+
+export function capOutput<T extends { stdout: string; stderr: string }>(result: T): T {
+  return { ...result, stdout: capText(result.stdout), stderr: capText(result.stderr) };
+}
