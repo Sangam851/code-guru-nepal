@@ -52,17 +52,20 @@ export function CodeBlock({
   const declared = (language || "").toLowerCase();
   const lang = declared && declared !== "text" && declared !== "plaintext" ? declared : inferLang(value);
   const isHtml = lang === "html" || lang === "htm" || /<html[\s>]|<!doctype html/i.test(value);
-  const canPreview = isHtml || SANDBOX_LANGS.has(lang) || lang === "javascript" || lang === "js";
+  const canWebPreview = isHtml || SANDBOX_LANGS.has(lang) || lang === "javascript" || lang === "js";
   const canSandbox = SANDBOX_LANGS.has(lang) || isHtml;
   const canRemoteRun = isRunnableLanguage(lang);
   const isPython = lang === "python" || lang === "py";
   const canRun = canSandbox || canRemoteRun;
+  // Every runnable language gets a Preview toggle: web languages render in an
+  // iframe, everything else shows a live console preview of the executed code.
+  const canPreview = canWebPreview || canRemoteRun;
   const unsupported = Boolean(lang) && !canRun;
   const errorText = [runOutput?.error, runOutput?.stderr].filter(Boolean).join("\n").trim();
   const hasRealError = Boolean(errorText) && !runOutput?.sandboxDoc && !runOutput?.rateLimited;
 
   const srcDoc = useMemo(() => {
-    if (!canPreview) return "";
+    if (!canWebPreview) return "";
     if (/<html[\s>]/i.test(value) || /<!doctype/i.test(value)) return value;
     if (lang === "css") {
       return `<!doctype html><html><head><meta charset="utf-8"><style>${value}</style></head><body><h1>Heading</h1><p>Paragraph text for CSS preview.</p><button>Button</button></body></html>`;
@@ -77,7 +80,7 @@ export function CodeBlock({
       <\/script></body></html>`;
     }
     return `<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:system-ui,sans-serif;padding:12px;color:#111;background:#fff;}</style></head><body>${value}</body></html>`;
-  }, [canPreview, lang, value]);
+  }, [canWebPreview, lang, value]);
 
   const run = async () => {
     if (running) return;
@@ -116,7 +119,12 @@ export function CodeBlock({
               size="sm"
               variant="ghost"
               className="h-7 px-2 gap-1.5 text-muted-foreground hover:text-foreground"
-              onClick={() => setShowPreview((s) => !s)}
+              onClick={() => {
+                const next = !showPreview;
+                setShowPreview(next);
+                // Console languages: preview means "run it and show live output".
+                if (next && !canWebPreview && !running && !runOutput) void run();
+              }}
             >
               {showPreview ? <Code2 className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
               <span>{showPreview ? "Code" : "Preview"}</span>
@@ -128,7 +136,7 @@ export function CodeBlock({
           </Button>
         </div>
       </div>
-      {showPreview && canPreview ? (
+      {showPreview && canWebPreview ? (
         <iframe
           title="Live preview"
           sandbox="allow-scripts"
@@ -136,6 +144,25 @@ export function CodeBlock({
           className="w-full bg-white"
           style={{ height: 320, border: 0 }}
         />
+      ) : showPreview && canPreview ? (
+        <div className="px-3 py-2 text-[12px] font-mono whitespace-pre-wrap min-h-[120px] max-h-80 overflow-auto bg-[#0a0a0a]">
+          {running && (
+            <div className="text-muted-foreground inline-flex items-center gap-2">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Running {lang} preview…
+            </div>
+          )}
+          {!running && runOutput?.error && <div className="text-destructive">{runOutput.error}</div>}
+          {!running && runOutput?.stdout && <div className="text-foreground/90">{runOutput.stdout}</div>}
+          {!running && runOutput?.stderr && <div className="text-destructive">{runOutput.stderr}</div>}
+          {!running && runOutput && !runOutput.error && !runOutput.stdout && !runOutput.stderr && (
+            <div className="text-muted-foreground">(no output)</div>
+          )}
+          {!running && !runOutput && (
+            <button onClick={() => void run()} className="text-primary hover:underline">
+              Run preview
+            </button>
+          )}
+        </div>
       ) : (
         <pre className="m-0 p-3 overflow-x-auto text-[13px] leading-relaxed text-foreground/90 font-mono">
           <code>{value}</code>
