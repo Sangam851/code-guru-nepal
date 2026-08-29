@@ -65,7 +65,7 @@ export function CodeBlock({
   const hasRealError = Boolean(errorText) && !runOutput?.sandboxDoc && !runOutput?.rateLimited;
 
   const srcDoc = useMemo(() => {
-    if (!canPreview) return "";
+    if (!canWebPreview) return "";
     if (/<html[\s>]/i.test(value) || /<!doctype/i.test(value)) return value;
     if (lang === "css") {
       return `<!doctype html><html><head><meta charset="utf-8"><style>${value}</style></head><body><h1>Heading</h1><p>Paragraph text for CSS preview.</p><button>Button</button></body></html>`;
