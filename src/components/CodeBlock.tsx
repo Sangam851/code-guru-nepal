@@ -52,11 +52,14 @@ export function CodeBlock({
   const declared = (language || "").toLowerCase();
   const lang = declared && declared !== "text" && declared !== "plaintext" ? declared : inferLang(value);
   const isHtml = lang === "html" || lang === "htm" || /<html[\s>]|<!doctype html/i.test(value);
-  const canPreview = isHtml || SANDBOX_LANGS.has(lang) || lang === "javascript" || lang === "js";
+  const canWebPreview = isHtml || SANDBOX_LANGS.has(lang) || lang === "javascript" || lang === "js";
   const canSandbox = SANDBOX_LANGS.has(lang) || isHtml;
   const canRemoteRun = isRunnableLanguage(lang);
   const isPython = lang === "python" || lang === "py";
   const canRun = canSandbox || canRemoteRun;
+  // Every runnable language gets a Preview toggle: web languages render in an
+  // iframe, everything else shows a live console preview of the executed code.
+  const canPreview = canWebPreview || canRemoteRun;
   const unsupported = Boolean(lang) && !canRun;
   const errorText = [runOutput?.error, runOutput?.stderr].filter(Boolean).join("\n").trim();
   const hasRealError = Boolean(errorText) && !runOutput?.sandboxDoc && !runOutput?.rateLimited;
