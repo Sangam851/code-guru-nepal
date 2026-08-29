@@ -80,7 +80,7 @@ export function CodeBlock({
       <\/script></body></html>`;
     }
     return `<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:system-ui,sans-serif;padding:12px;color:#111;background:#fff;}</style></head><body>${value}</body></html>`;
-  }, [canPreview, lang, value]);
+  }, [canWebPreview, lang, value]);
 
   const run = async () => {
     if (running) return;
