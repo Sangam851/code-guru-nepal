@@ -119,7 +119,12 @@ export function CodeBlock({
               size="sm"
               variant="ghost"
               className="h-7 px-2 gap-1.5 text-muted-foreground hover:text-foreground"
-              onClick={() => setShowPreview((s) => !s)}
+              onClick={() => {
+                const next = !showPreview;
+                setShowPreview(next);
+                // Console languages: preview means "run it and show live output".
+                if (next && !canWebPreview && !running && !runOutput) void run();
+              }}
             >
               {showPreview ? <Code2 className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
               <span>{showPreview ? "Code" : "Preview"}</span>
