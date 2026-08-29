@@ -136,7 +136,7 @@ export function CodeBlock({
           </Button>
         </div>
       </div>
-      {showPreview && canPreview ? (
+      {showPreview && canWebPreview ? (
         <iframe
           title="Live preview"
           sandbox="allow-scripts"
@@ -144,6 +144,25 @@ export function CodeBlock({
           className="w-full bg-white"
           style={{ height: 320, border: 0 }}
         />
+      ) : showPreview && canPreview ? (
+        <div className="px-3 py-2 text-[12px] font-mono whitespace-pre-wrap min-h-[120px] max-h-80 overflow-auto bg-[#0a0a0a]">
+          {running && (
+            <div className="text-muted-foreground inline-flex items-center gap-2">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Running {lang} preview…
+            </div>
+          )}
+          {!running && runOutput?.error && <div className="text-destructive">{runOutput.error}</div>}
+          {!running && runOutput?.stdout && <div className="text-foreground/90">{runOutput.stdout}</div>}
+          {!running && runOutput?.stderr && <div className="text-destructive">{runOutput.stderr}</div>}
+          {!running && runOutput && !runOutput.error && !runOutput.stdout && !runOutput.stderr && (
+            <div className="text-muted-foreground">(no output)</div>
+          )}
+          {!running && !runOutput && (
+            <button onClick={() => void run()} className="text-primary hover:underline">
+              Run preview
+            </button>
+          )}
+        </div>
       ) : (
         <pre className="m-0 p-3 overflow-x-auto text-[13px] leading-relaxed text-foreground/90 font-mono">
           <code>{value}</code>
