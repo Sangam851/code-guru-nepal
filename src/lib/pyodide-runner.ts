@@ -27,9 +27,11 @@ export function getPyodide(): Promise<Pyodide> {
   if (!pyodidePromise) {
     pyodidePromise = (async () => {
       await loadScript(`${CDN}pyodide.js`);
-      const loader = (window as unknown as {
-        loadPyodide?: (opts: { indexURL: string }) => Promise<Pyodide>;
-      }).loadPyodide;
+      const loader = (
+        window as unknown as {
+          loadPyodide?: (opts: { indexURL: string }) => Promise<Pyodide>;
+        }
+      ).loadPyodide;
       if (!loader) throw new Error("Python runtime unavailable.");
       return loader({ indexURL: CDN });
     })().catch((e) => {
@@ -44,8 +46,16 @@ export async function runPython(code: string): Promise<{ stdout: string; stderr:
   const py = await getPyodide();
   let stdout = "";
   let stderr = "";
-  py.setStdout({ batched: (s) => { stdout += s + "\n"; } });
-  py.setStderr({ batched: (s) => { stderr += s + "\n"; } });
+  py.setStdout({
+    batched: (s) => {
+      stdout += s + "\n";
+    },
+  });
+  py.setStderr({
+    batched: (s) => {
+      stderr += s + "\n";
+    },
+  });
   try {
     await py.runPythonAsync(code);
   } catch (e) {

@@ -11,8 +11,13 @@ const SANDBOX_LANGS = new Set(["html", "htm", "css"]);
 function inferLang(code: string): string {
   const c = code.trim();
   if (/^<!doctype html|<html[\s>]|<\/(div|body|head|h1|p)>/i.test(c)) return "html";
-  if (/^[.#@a-z][\w\-\s.#:>,\[\]="']*\{[^}]*:[^}]*\}/i.test(c) && !/;\s*$/.test(c.split("\n")[0] ?? "")) return "css";
-  if (/^\s*(#include\s*<|int\s+main\s*\()/m.test(c)) return /std::|iostream|cout/.test(c) ? "cpp" : "c";
+  if (
+    /^[.#@a-z][\w\-\s.#:>,\[\]="']*\{[^}]*:[^}]*\}/i.test(c) &&
+    !/;\s*$/.test(c.split("\n")[0] ?? "")
+  )
+    return "css";
+  if (/^\s*(#include\s*<|int\s+main\s*\()/m.test(c))
+    return /std::|iostream|cout/.test(c) ? "cpp" : "c";
   if (/^\s*(def |import |from .+ import |print\()/m.test(c)) return "python";
   if (/\bpublic\s+class\s+\w+|System\.out\.println/.test(c)) return "java";
   if (/\busing\s+System\b|Console\.WriteLine/.test(c)) return "csharp";
@@ -29,7 +34,11 @@ export function CodeBlock({
 }: {
   language?: string;
   value: string;
-  onExplainError?: (payload: { language: string; code: string; errorText: string }) => void | Promise<void>;
+  onExplainError?: (payload: {
+    language: string;
+    code: string;
+    errorText: string;
+  }) => void | Promise<void>;
 }) {
   const [copied, setCopied] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -50,7 +59,8 @@ export function CodeBlock({
   };
 
   const declared = (language || "").toLowerCase();
-  const lang = declared && declared !== "text" && declared !== "plaintext" ? declared : inferLang(value);
+  const lang =
+    declared && declared !== "text" && declared !== "plaintext" ? declared : inferLang(value);
   const isHtml = lang === "html" || lang === "htm" || /<html[\s>]|<!doctype html/i.test(value);
   const canWebPreview = isHtml || SANDBOX_LANGS.has(lang) || lang === "javascript" || lang === "js";
   const canSandbox = SANDBOX_LANGS.has(lang) || isHtml;
@@ -130,7 +140,12 @@ export function CodeBlock({
               <span>{showPreview ? "Code" : "Preview"}</span>
             </Button>
           )}
-          <Button size="sm" variant="ghost" className="h-7 px-2 gap-1.5 text-muted-foreground hover:text-foreground" onClick={copy}>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 px-2 gap-1.5 text-muted-foreground hover:text-foreground"
+            onClick={copy}
+          >
             {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
             <span>{copied ? "Copied" : "Copy"}</span>
           </Button>
@@ -151,9 +166,15 @@ export function CodeBlock({
               <Loader2 className="h-3.5 w-3.5 animate-spin" /> Running {lang} preview…
             </div>
           )}
-          {!running && runOutput?.error && <div className="text-destructive">{runOutput.error}</div>}
-          {!running && runOutput?.stdout && <div className="text-foreground/90">{runOutput.stdout}</div>}
-          {!running && runOutput?.stderr && <div className="text-destructive">{runOutput.stderr}</div>}
+          {!running && runOutput?.error && (
+            <div className="text-destructive">{runOutput.error}</div>
+          )}
+          {!running && runOutput?.stdout && (
+            <div className="text-foreground/90">{runOutput.stdout}</div>
+          )}
+          {!running && runOutput?.stderr && (
+            <div className="text-destructive">{runOutput.stderr}</div>
+          )}
           {!running && runOutput && !runOutput.error && !runOutput.stdout && !runOutput.stderr && (
             <div className="text-muted-foreground">(no output)</div>
           )}
@@ -170,8 +191,18 @@ export function CodeBlock({
       )}
       {canRun && (
         <div className="flex items-center gap-2 px-3 py-1.5 border-t border-border/60 bg-[#141414]">
-          <Button size="sm" variant="ghost" className="h-7 px-2 gap-1.5 text-xs" onClick={run} disabled={running}>
-            {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5 text-primary" />}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 px-2 gap-1.5 text-xs"
+            onClick={run}
+            disabled={running}
+          >
+            {running ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Play className="h-3.5 w-3.5 text-primary" />
+            )}
             {running ? "Running…" : canSandbox ? "Run" : "Run Code"}
           </Button>
           {!canSandbox && (
@@ -200,7 +231,9 @@ export function CodeBlock({
             size="sm"
             variant="ghost"
             className="h-7 px-2 gap-1.5 text-xs"
-            onClick={() => void onExplainError({ language: lang || "code", code: value, errorText })}
+            onClick={() =>
+              void onExplainError({ language: lang || "code", code: value, errorText })
+            }
           >
             <HelpCircle className="h-3.5 w-3.5 text-primary" /> Explain this error
           </Button>

@@ -35,14 +35,7 @@ export function NepalLogo({ className, size = 40 }: { className?: string; size?:
       <g transform="translate(24 80)" fill="#fff">
         <circle cx="0" cy="0" r="6" />
         {Array.from({ length: 12 }).map((_, i) => (
-          <rect
-            key={i}
-            x="-1"
-            y="-11"
-            width="2"
-            height="4"
-            transform={`rotate(${i * 30})`}
-          />
+          <rect key={i} x="-1" y="-11" width="2" height="4" transform={`rotate(${i * 30})`} />
         ))}
       </g>
     </svg>

@@ -48,7 +48,9 @@ function SubscriptionPage() {
     <div className="min-h-screen" style={{ background: "var(--gradient-hero)" }}>
       <header className="sticky top-0 z-10 flex items-center gap-3 p-4 border-b border-border/50 bg-background/70 backdrop-blur-xl">
         <Link to="/chat">
-          <Button size="icon" variant="ghost"><ArrowLeft className="h-5 w-5" /></Button>
+          <Button size="icon" variant="ghost">
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
         </Link>
         <div className="flex items-center gap-2">
           <NepalLogo size={28} />
@@ -58,7 +60,9 @@ function SubscriptionPage() {
 
       <main className="max-w-3xl mx-auto p-4 space-y-6">
         {loading ? (
-          <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
+          <div className="flex justify-center py-10">
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          </div>
         ) : (
           <>
             <div className="grid gap-4 md:grid-cols-2">
@@ -69,9 +73,13 @@ function SubscriptionPage() {
                 features={["Access to Free models", "Web search", "Chat history", "Code execution"]}
                 action={
                   tier === "pro" ? (
-                    <Button variant="outline" className="w-full" onClick={downgrade}>Switch to Free</Button>
+                    <Button variant="outline" className="w-full" onClick={downgrade}>
+                      Switch to Free
+                    </Button>
                   ) : (
-                    <Button variant="outline" className="w-full" disabled>Current plan</Button>
+                    <Button variant="outline" className="w-full" disabled>
+                      Current plan
+                    </Button>
                   )
                 }
               />
@@ -88,11 +96,15 @@ function SubscriptionPage() {
                 ]}
                 action={
                   tier === "pro" ? (
-                    <Button variant="outline" className="w-full" disabled>You're Pro ✨</Button>
+                    <Button variant="outline" className="w-full" disabled>
+                      You're Pro ✨
+                    </Button>
                   ) : (
                     <Button
                       className="w-full bg-[image:var(--gradient-primary)] text-primary-foreground"
-                      onClick={() => document.getElementById("pay")?.scrollIntoView({ behavior: "smooth" })}
+                      onClick={() =>
+                        document.getElementById("pay")?.scrollIntoView({ behavior: "smooth" })
+                      }
                     >
                       <Crown className="h-4 w-4 mr-1.5" /> Upgrade to Pro
                     </Button>
@@ -105,14 +117,33 @@ function SubscriptionPage() {
               <Card id="pay" className="p-5 space-y-4 bg-card/70 border-border/60 backdrop-blur">
                 <div>
                   <h2 className="font-semibold">Choose a payment method</h2>
-                  <p className="text-xs text-muted-foreground mt-1">Payments are coming soon. Pick one to be notified.</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Payments are coming soon. Pick one to be notified.
+                  </p>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-3">
-                  <PayOption icon={<CreditCard className="h-4 w-4" />} label="International Card" active={method === "card"} onClick={() => setMethod("card")} />
-                  <PayOption icon={<Wallet className="h-4 w-4" />} label="PayPal" active={method === "paypal"} onClick={() => setMethod("paypal")} />
-                  <PayOption icon={<Smartphone className="h-4 w-4" />} label="eSewa" active={method === "esewa"} onClick={() => setMethod("esewa")} />
+                  <PayOption
+                    icon={<CreditCard className="h-4 w-4" />}
+                    label="International Card"
+                    active={method === "card"}
+                    onClick={() => setMethod("card")}
+                  />
+                  <PayOption
+                    icon={<Wallet className="h-4 w-4" />}
+                    label="PayPal"
+                    active={method === "paypal"}
+                    onClick={() => setMethod("paypal")}
+                  />
+                  <PayOption
+                    icon={<Smartphone className="h-4 w-4" />}
+                    label="eSewa"
+                    active={method === "esewa"}
+                    onClick={() => setMethod("esewa")}
+                  />
                 </div>
-                <Button className="w-full" onClick={proceedPayment}>Continue</Button>
+                <Button className="w-full" onClick={proceedPayment}>
+                  Continue
+                </Button>
                 <p className="text-[11px] text-muted-foreground text-center">
                   Prefer to test?{" "}
                   <button
@@ -137,18 +168,32 @@ function SubscriptionPage() {
 }
 
 function PlanCard({
-  title, price, features, action, highlight, current,
+  title,
+  price,
+  features,
+  action,
+  highlight,
+  current,
 }: {
-  title: string; price: string; features: string[]; action: React.ReactNode; highlight?: boolean; current?: boolean;
+  title: string;
+  price: string;
+  features: string[];
+  action: React.ReactNode;
+  highlight?: boolean;
+  current?: boolean;
 }) {
   return (
-    <Card className={`p-5 space-y-4 bg-card/70 border-border/60 backdrop-blur ${highlight ? "ring-1 ring-primary/40" : ""}`}>
+    <Card
+      className={`p-5 space-y-4 bg-card/70 border-border/60 backdrop-blur ${highlight ? "ring-1 ring-primary/40" : ""}`}
+    >
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-lg flex items-center gap-2">
           {title}
           {highlight && <Crown className="h-4 w-4 text-primary" />}
         </h3>
-        {current && <span className="text-[10px] uppercase tracking-wider text-primary">Current</span>}
+        {current && (
+          <span className="text-[10px] uppercase tracking-wider text-primary">Current</span>
+        )}
       </div>
       <div className="text-2xl font-bold">{price}</div>
       <ul className="space-y-1.5 text-sm text-muted-foreground">
@@ -163,7 +208,17 @@ function PlanCard({
   );
 }
 
-function PayOption({ icon, label, active, onClick }: { icon: React.ReactNode; label: string; active: boolean; onClick: () => void }) {
+function PayOption({
+  icon,
+  label,
+  active,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
   return (
     <button
       onClick={onClick}

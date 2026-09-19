@@ -7,8 +7,21 @@ import {
 } from "./exec-languages";
 
 const RUNNABLE = [
-  "python", "py", "javascript", "js", "typescript", "ts",
-  "c", "cpp", "c++", "java", "csharp", "c#", "go", "sql", "sqlite",
+  "python",
+  "py",
+  "javascript",
+  "js",
+  "typescript",
+  "ts",
+  "c",
+  "cpp",
+  "c++",
+  "java",
+  "csharp",
+  "c#",
+  "go",
+  "sql",
+  "sqlite",
 ];
 
 describe("Run mode language support", () => {

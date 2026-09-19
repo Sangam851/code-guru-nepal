@@ -8,6 +8,7 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
+import { Analytics } from "@vercel/analytics/react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -80,17 +81,37 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "Nepali Cooding AI — Learn every language" },
-      { name: "description", content: "A premium mobile AI coding companion from Nepal. Ask, generate, and debug Python, C, C++, C#, Java, SQL, JavaScript and more — with live web search." },
+      {
+        name: "description",
+        content:
+          "A premium mobile AI coding companion from Nepal. Ask, generate, and debug Python, C, C++, C#, Java, SQL, JavaScript and more — with live web search.",
+      },
       { name: "author", content: "Nepali Cooding AI" },
       { name: "theme-color", content: "#dc143c" },
       { property: "og:title", content: "Nepali Cooding AI — Learn every language" },
-      { property: "og:description", content: "A premium mobile AI coding companion from Nepal. Ask, generate, and debug Python, C, C++, C#, Java, SQL, JavaScript and more — with live web search." },
+      {
+        property: "og:description",
+        content:
+          "A premium mobile AI coding companion from Nepal. Ask, generate, and debug Python, C, C++, C#, Java, SQL, JavaScript and more — with live web search.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:title", content: "Nepali Cooding AI — Learn every language" },
-      { name: "twitter:description", content: "A premium mobile AI coding companion from Nepal. Ask, generate, and debug Python, C, C++, C#, Java, SQL, JavaScript and more — with live web search." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/2e4c5c83-c0b9-4e30-9bd5-11ba11ab38d0/id-preview-b36b2be3--8f1a7552-5b85-48a6-bdfa-ea0a23030f41.lovable.app-1784100607525.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/2e4c5c83-c0b9-4e30-9bd5-11ba11ab38d0/id-preview-b36b2be3--8f1a7552-5b85-48a6-bdfa-ea0a23030f41.lovable.app-1784100607525.png" },
+      {
+        name: "twitter:description",
+        content:
+          "A premium mobile AI coding companion from Nepal. Ask, generate, and debug Python, C, C++, C#, Java, SQL, JavaScript and more — with live web search.",
+      },
+      {
+        property: "og:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/2e4c5c83-c0b9-4e30-9bd5-11ba11ab38d0/id-preview-b36b2be3--8f1a7552-5b85-48a6-bdfa-ea0a23030f41.lovable.app-1784100607525.png",
+      },
+      {
+        name: "twitter:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/2e4c5c83-c0b9-4e30-9bd5-11ba11ab38d0/id-preview-b36b2be3--8f1a7552-5b85-48a6-bdfa-ea0a23030f41.lovable.app-1784100607525.png",
+      },
     ],
     links: [
       {
@@ -137,6 +158,7 @@ function RootComponent() {
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
       <Toaster />
+      <Analytics />
     </QueryClientProvider>
   );
 }

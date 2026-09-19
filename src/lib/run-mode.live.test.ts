@@ -21,16 +21,25 @@ const CASES: Array<[string, string, string, string]> = [
   ["JavaScript", "js", 'console.log("hi")', "hi"],
   ["C", "c", '#include <stdio.h>\nint main(){printf("hi");}', "hi"],
   ["C++", "cpp", '#include <iostream>\nint main(){std::cout<<"hi";}', "hi"],
-  ["Java", "java", 'public class Main{public static void main(String[] a){System.out.println("hi");}}', "hi"],
+  [
+    "Java",
+    "java",
+    'public class Main{public static void main(String[] a){System.out.println("hi");}}',
+    "hi",
+  ],
   ["C#", "cs", 'using System;class P{static void Main(){Console.WriteLine("hi");}}', "hi"],
   ["Go", "go", 'package main\nimport "fmt"\nfunc main(){fmt.Println("hi")}', "hi"],
   ["SQL", "py", buildSqlShim("SELECT 'hi' AS greeting;"), "hi"],
 ];
 
 describe.runIf(live)("Run mode live execution", () => {
-  it.each(CASES)("runs %s", async (_label, lang, code, expected) => {
-    const out = await runOnCodex(lang, code);
-    expect(`${out.output ?? ""}`).toContain(expected);
-    expect(out.error ?? "").toBe("");
-  }, 60_000);
+  it.each(CASES)(
+    "runs %s",
+    async (_label, lang, code, expected) => {
+      const out = await runOnCodex(lang, code);
+      expect(`${out.output ?? ""}`).toContain(expected);
+      expect(out.error ?? "").toBe("");
+    },
+    60_000,
+  );
 });

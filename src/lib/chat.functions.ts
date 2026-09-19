@@ -172,7 +172,12 @@ async function callOpenAI(apiKey: string, model: string, messages: Msg[], maxTok
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({ model, messages, temperature: 0.3, ...(maxTokens ? { max_tokens: maxTokens } : {}) }),
+    body: JSON.stringify({
+      model,
+      messages,
+      temperature: 0.3,
+      ...(maxTokens ? { max_tokens: maxTokens } : {}),
+    }),
   });
   if (!res.ok) throw new Error(providerError("OpenAI", res.status, await res.text()));
   const data = (await res.json()) as { choices: Array<{ message: { content: string } }> };
@@ -204,7 +209,12 @@ async function callOpenAICompatible(
   apiKey: string,
   model: string,
   messages: Msg[],
-  options: { label?: string; extraHeaders?: Record<string, string>; maxTokens?: number; auth?: "bearer" | "lovable" } = {},
+  options: {
+    label?: string;
+    extraHeaders?: Record<string, string>;
+    maxTokens?: number;
+    auth?: "bearer" | "lovable";
+  } = {},
 ) {
   const res = await fetch(`${baseURL}/chat/completions`, {
     method: "POST",
@@ -251,20 +261,32 @@ export const testProvider = createServerFn({ method: "POST" })
       } else if (data.provider === "lovable") {
         const key = process.env.LOVABLE_API_KEY;
         if (!key) throw new Error("Lovable AI is not configured.");
-        reply = await callOpenAICompatible("https://ai.gateway.lovable.dev/v1", key, data.model, messages, { label: "Lovable AI", maxTokens: 16, auth: "lovable" });
+        reply = await callOpenAICompatible(
+          "https://ai.gateway.lovable.dev/v1",
+          key,
+          data.model,
+          messages,
+          { label: "Lovable AI", maxTokens: 16, auth: "lovable" },
+        );
       } else if (data.provider === "anthropic") {
         if (!data.apiKey) throw new Error("Missing API key.");
         reply = await callAnthropic(data.apiKey, data.model, messages, 16);
       } else if (data.provider === "openrouter") {
         if (!data.apiKey) throw new Error("Missing API key.");
-        reply = await callOpenAICompatible("https://openrouter.ai/api/v1", data.apiKey, data.model, messages, {
-          label: "OpenRouter",
-          maxTokens: 16,
-          extraHeaders: {
-            "HTTP-Referer": "https://lovable.dev",
-            "X-Title": "Nepali Cooding AI",
+        reply = await callOpenAICompatible(
+          "https://openrouter.ai/api/v1",
+          data.apiKey,
+          data.model,
+          messages,
+          {
+            label: "OpenRouter",
+            maxTokens: 16,
+            extraHeaders: {
+              "HTTP-Referer": "https://lovable.dev",
+              "X-Title": "Nepali Cooding AI",
+            },
           },
-        });
+        );
       } else {
         if (!data.apiKey) throw new Error("Missing API key.");
         reply = await callOpenAI(data.apiKey, data.model, messages, 16);
@@ -362,7 +384,9 @@ export const runChat = createServerFn({ method: "POST" })
       }
     }
     const { reply: raw } = await providers.chatComplete(messages, requested);
-    const { body, followups } = data.webSearch ? extractFollowups(raw) : { body: raw, followups: [] };
+    const { body, followups } = data.webSearch
+      ? extractFollowups(raw)
+      : { body: raw, followups: [] };
     const stored =
       data.webSearch && (sources.length > 0 || followups.length > 0)
         ? body + encodeAnswerMeta({ sources, followups })
@@ -441,7 +465,9 @@ export const regenerateLast = createServerFn({ method: "POST" })
       messages,
       (profile?.selected_model as string | null) ?? null,
     );
-    const { body, followups } = data.webSearch ? extractFollowups(raw) : { body: raw, followups: [] };
+    const { body, followups } = data.webSearch
+      ? extractFollowups(raw)
+      : { body: raw, followups: [] };
     const stored =
       data.webSearch && (sources.length > 0 || followups.length > 0)
         ? body + encodeAnswerMeta({ sources, followups })
@@ -530,10 +556,7 @@ export const editUserMessage = createServerFn({ method: "POST" })
     if (toDelete.length > 0) {
       await supabase.from("messages").delete().in("id", toDelete);
     }
-    await supabase
-      .from("messages")
-      .update({ content: data.newContent })
-      .eq("id", data.messageId);
+    await supabase.from("messages").update({ content: data.newContent }).eq("id", data.messageId);
 
     const priorRows = rows.slice(0, idx);
 
@@ -563,7 +586,9 @@ export const editUserMessage = createServerFn({ method: "POST" })
       messages,
       (profile?.selected_model as string | null) ?? null,
     );
-    const { body, followups } = data.webSearch ? extractFollowups(raw) : { body: raw, followups: [] };
+    const { body, followups } = data.webSearch
+      ? extractFollowups(raw)
+      : { body: raw, followups: [] };
     const stored =
       data.webSearch && (sources.length > 0 || followups.length > 0)
         ? body + encodeAnswerMeta({ sources, followups })
@@ -685,9 +710,11 @@ async function runOnCodex(data: { language: string; code: string; stdin?: string
     body: JSON.stringify({ code, language: lang, input: data.stdin ?? "" }),
     signal: AbortSignal.timeout(15_000),
   });
-  const json = (await res.json().catch(() => null)) as
-    | { output?: string; error?: string; status?: number }
-    | null;
+  const json = (await res.json().catch(() => null)) as {
+    output?: string;
+    error?: string;
+    status?: number;
+  } | null;
   if (!json) return null;
   if (!res.ok && !json.output && !json.error) return null;
   const stderr = (json.error ?? "").trim();

@@ -29,13 +29,18 @@ export const PISTON_LANG: Record<string, PistonConfig> = {
 
 /** Languages the primary runner (CodeX) executes natively. */
 export const CODEX_LANG: Record<string, string> = {
-  python: "py", py: "py",
-  javascript: "js", js: "js",
-  typescript: "js", ts: "js",
+  python: "py",
+  py: "py",
+  javascript: "js",
+  js: "js",
+  typescript: "js",
+  ts: "js",
   java: "java",
   c: "c",
-  cpp: "cpp", "c++": "cpp",
-  csharp: "cs", "c#": "cs",
+  cpp: "cpp",
+  "c++": "cpp",
+  csharp: "cs",
+  "c#": "cs",
   go: "go",
 };
 
