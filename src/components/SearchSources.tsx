@@ -61,11 +61,18 @@ export function SourceCards({
             className="shrink-0 w-[168px] min-h-[56px] touch-manipulation select-none rounded-xl border border-border/60 bg-card/60 hover:bg-card active:bg-card px-2.5 py-2 transition [touch-action:manipulation]"
           >
             <div className="flex items-center gap-1.5 mb-1">
-              <img src={faviconUrl(s.url)} alt="" className="h-3.5 w-3.5 rounded-sm" loading="lazy" />
+              <img
+                src={faviconUrl(s.url)}
+                alt=""
+                className="h-3.5 w-3.5 rounded-sm"
+                loading="lazy"
+              />
               <span className="text-[10px] text-muted-foreground truncate">{s.site}</span>
               <span className="ml-auto text-[10px] text-muted-foreground">{i + 1}</span>
             </div>
-            <div className="text-[11px] leading-snug line-clamp-2 text-foreground/90">{s.title}</div>
+            <div className="text-[11px] leading-snug line-clamp-2 text-foreground/90">
+              {s.title}
+            </div>
           </a>
         ))}
       </div>

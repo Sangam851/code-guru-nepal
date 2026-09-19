@@ -1,4 +1,3 @@
-
 # Level Up — Nepali Coding AI
 
 This is a large scope (9 feature areas, some overlapping). I'll ship it in **four phases** so you can review each before we move on. Nothing here changes the fact that Lovable AI + Tavily are the built-in providers (locked, per your earlier request).
@@ -7,7 +6,7 @@ This is a large scope (9 feature areas, some overlapping). I'll ship it in **fou
 
 ## Phase 1 — Core chat UX (fixes the most-used surface)
 
-1. **Auto language detection** — parse each user message; if it names Python/C/Java/etc., answer in that language regardless of the selected chip. The chip becomes a *default*, not a lock. Multi-language convo supported.
+1. **Auto language detection** — parse each user message; if it names Python/C/Java/etc., answer in that language regardless of the selected chip. The chip becomes a _default_, not a lock. Multi-language convo supported.
 2. **Live preview pane** — when the assistant returns HTML/CSS/JS, render it in a sandboxed `<iframe srcdoc>` beside the code, updating when the block finishes streaming. Split-pane, resizable, collapsible.
 3. **Message actions** — copy full response, regenerate last answer, edit previous user message (re-runs from that point).
 4. **Explanation vs. code separation** — already in place; will keep and integrate with preview pane.

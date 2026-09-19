@@ -5,7 +5,12 @@
 import type { MeshMsg } from "./mesh.server";
 
 export type ChatMsg = MeshMsg;
-export type CatalogModel = { id: string; free: boolean; label: string; provider: "lovable" | "mesh" };
+export type CatalogModel = {
+  id: string;
+  free: boolean;
+  label: string;
+  provider: "lovable" | "mesh";
+};
 
 export const LOVABLE_PREFIX = "lovable:";
 
@@ -43,7 +48,11 @@ export function isFreeModelId(id?: string | null): boolean {
   return isLovableModel(id);
 }
 
-async function callLovable(model: string, messages: ChatMsg[], maxTokens?: number): Promise<string> {
+async function callLovable(
+  model: string,
+  messages: ChatMsg[],
+  maxTokens?: number,
+): Promise<string> {
   const key = process.env.LOVABLE_API_KEY;
   if (!key) throw new Error("The free AI models are not configured right now.");
   const isGpt5 = model.startsWith("openai/gpt-5");
@@ -66,8 +75,12 @@ async function callLovable(model: string, messages: ChatMsg[], maxTokens?: numbe
   });
   if (!res.ok) {
     const text = await res.text();
-    if (res.status === 429) throw new Error("Free AI models are rate limited right now. Please retry in a moment.");
-    if (res.status === 402) throw new Error("The free AI allowance is used up. Please try again later or pick another model.");
+    if (res.status === 429)
+      throw new Error("Free AI models are rate limited right now. Please retry in a moment.");
+    if (res.status === 402)
+      throw new Error(
+        "The free AI allowance is used up. Please try again later or pick another model.",
+      );
     throw new Error(`AI error ${res.status}: ${text.replace(/\s+/g, " ").slice(0, 300)}`);
   }
   const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
@@ -88,7 +101,10 @@ export async function chatComplete(
   }
   const mesh = await import("./mesh.server");
   try {
-    return await mesh.meshChat(messages, { model: requested ?? null, maxTokens: options.maxTokens });
+    return await mesh.meshChat(messages, {
+      model: requested ?? null,
+      maxTokens: options.maxTokens,
+    });
   } catch (e) {
     // Keep the app usable when Mesh is down/unconfigured: fall back to a free model.
     if (!process.env.LOVABLE_API_KEY) throw e;
@@ -101,7 +117,11 @@ export async function chatComplete(
 }
 
 /** Full catalog: free Lovable models first, then whatever Mesh serves. */
-export async function listAllModels(): Promise<{ free: CatalogModel[]; pro: CatalogModel[]; error?: string }> {
+export async function listAllModels(): Promise<{
+  free: CatalogModel[];
+  pro: CatalogModel[];
+  error?: string;
+}> {
   const lovable = lovableCatalog();
   let meshFree: CatalogModel[] = [];
   let meshPro: CatalogModel[] = [];

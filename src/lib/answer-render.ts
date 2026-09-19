@@ -1,6 +1,7 @@
 import type { AnswerSource } from "./answer-meta";
 
-export type Segment = { type: "text"; value: string } | { type: "code"; lang?: string; value: string };
+export type Segment =
+  { type: "text"; value: string } | { type: "code"; lang?: string; value: string };
 
 /** Turn bare [1] markers in an answer into markdown links to the matching source. */
 export function linkCitations(text: string, sources: AnswerSource[]): string {

@@ -2,14 +2,55 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { runChat, testProvider, regenerateLast, editUserMessage, transcribeAudio, listMeshModels, getSubscription, setSelectedModel } from "@/lib/chat.functions";
+import {
+  runChat,
+  testProvider,
+  regenerateLast,
+  editUserMessage,
+  transcribeAudio,
+  listMeshModels,
+  getSubscription,
+  setSelectedModel,
+} from "@/lib/chat.functions";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Loader2, Menu, Plus, Send, Settings as SettingsIcon, Globe, Trash2, MessageSquare, Zap, Copy, Check, RefreshCw, Pencil, X, Mic, Camera, Paperclip, Square, FileText, Image as ImageIcon, Lock, Sparkles, Crown, Search, ChevronDown } from "lucide-react";
+import {
+  Loader2,
+  Menu,
+  Plus,
+  Send,
+  Settings as SettingsIcon,
+  Globe,
+  Trash2,
+  MessageSquare,
+  Zap,
+  Copy,
+  Check,
+  RefreshCw,
+  Pencil,
+  X,
+  Mic,
+  Camera,
+  Paperclip,
+  Square,
+  FileText,
+  Image as ImageIcon,
+  Lock,
+  Sparkles,
+  Crown,
+  Search,
+  ChevronDown,
+} from "lucide-react";
 import { NepalLogo } from "@/components/NepalLogo";
 import { LANGUAGES } from "@/lib/languages";
 import ReactMarkdown from "react-markdown";
@@ -25,7 +66,12 @@ export const Route = createFileRoute("/_authenticated/chat")({
 });
 
 type Conversation = { id: string; title: string; language: string; updated_at: string };
-type Message = { id: string; role: "user" | "assistant" | "system"; content: string; created_at: string };
+type Message = {
+  id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  created_at: string;
+};
 
 function ChatPage() {
   const runChatFn = useServerFn(runChat);
@@ -48,7 +94,10 @@ function ChatPage() {
   const [tier, setTier] = useState<"free" | "pro">("free");
   const [meshModel, setMeshModel] = useState<string | null>(null);
   const [modelsOpen, setModelsOpen] = useState(false);
-  const [models, setModels] = useState<{ free: { id: string; label: string }[]; pro: { id: string; label: string }[] }>({ free: [], pro: [] });
+  const [models, setModels] = useState<{
+    free: { id: string; label: string }[];
+    pro: { id: string; label: string }[];
+  }>({ free: [], pro: [] });
   const [modelQuery, setModelQuery] = useState("");
   const [modelFamily, setModelFamily] = useState<string>("all");
   const [modelTier, setModelTier] = useState<"all" | "free" | "pro">("all");
@@ -68,9 +117,18 @@ function ChatPage() {
   }>(null);
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
-  const recorderRef = useRef<{ stream: MediaStream; ctx: AudioContext; chunks: Float32Array[]; node: ScriptProcessorNode; source: MediaStreamAudioSourceNode } | null>(null);
+  const recorderRef = useRef<{
+    stream: MediaStream;
+    ctx: AudioContext;
+    chunks: Float32Array[];
+    node: ScriptProcessorNode;
+    source: MediaStreamAudioSourceNode;
+  } | null>(null);
 
-  const activeConv = useMemo(() => conversations.find((c) => c.id === activeId), [conversations, activeId]);
+  const activeConv = useMemo(
+    () => conversations.find((c) => c.id === activeId),
+    [conversations, activeId],
+  );
 
   const testNow = async () => {
     if (testing) return;
@@ -165,7 +223,8 @@ function ChatPage() {
         setTier(sub.tier);
         if (sub.selectedModel) setMeshModel(sub.selectedModel);
         else {
-          const stored = typeof window !== "undefined" ? window.localStorage.getItem("nca:model") : null;
+          const stored =
+            typeof window !== "undefined" ? window.localStorage.getItem("nca:model") : null;
           if (stored) setMeshModel(stored);
         }
       } catch {
@@ -193,7 +252,11 @@ function ChatPage() {
     setMeshModel(id);
     if (typeof window !== "undefined") window.localStorage.setItem("nca:model", id);
     setModelsOpen(false);
-    try { await saveModelFn({ data: { model: id } }); } catch { /* ignore */ }
+    try {
+      await saveModelFn({ data: { model: id } });
+    } catch {
+      /* ignore */
+    }
     toast.success(`Model: ${id}`);
   };
 
@@ -201,7 +264,11 @@ function ChatPage() {
     setMeshModel(null);
     if (typeof window !== "undefined") window.localStorage.removeItem("nca:model");
     setModelsOpen(false);
-    try { await saveModelFn({ data: { model: null } }); } catch { /* ignore */ }
+    try {
+      await saveModelFn({ data: { model: null } });
+    } catch {
+      /* ignore */
+    }
   };
 
   useEffect(() => {
@@ -283,7 +350,9 @@ function ChatPage() {
     if (!activeId || sending) return;
     setSending(true);
     try {
-      await editFn({ data: { conversationId: activeId, messageId, newContent, language, webSearch } });
+      await editFn({
+        data: { conversationId: activeId, messageId, newContent, language, webSearch },
+      });
       setMessages(await loadMessages(activeId));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Edit failed");
@@ -307,7 +376,8 @@ function ChatPage() {
       r.readAsText(file);
     });
 
-  const TEXT_EXT = /\.(txt|md|json|csv|tsv|yaml|yml|toml|xml|html|css|scss|js|jsx|ts|tsx|py|rb|go|rs|java|kt|swift|c|h|cpp|hpp|cs|php|sh|bash|zsh|sql|log|ini|env)$/i;
+  const TEXT_EXT =
+    /\.(txt|md|json|csv|tsv|yaml|yml|toml|xml|html|css|scss|js|jsx|ts|tsx|py|rb|go|rs|java|kt|swift|c|h|cpp|hpp|cs|php|sh|bash|zsh|sql|log|ini|env)$/i;
 
   const handleFilePicked = async (file: File | null | undefined) => {
     if (!file) return;
@@ -316,7 +386,13 @@ function ChatPage() {
     try {
       if (file.type.startsWith("image/")) {
         const dataUrl = await readFileAsDataUrl(file);
-        setAttachment({ kind: "image", filename: file.name, mime: file.type, dataUrl, previewUrl: dataUrl });
+        setAttachment({
+          kind: "image",
+          filename: file.name,
+          mime: file.type,
+          dataUrl,
+          previewUrl: dataUrl,
+        });
       } else if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) {
         const dataUrl = await readFileAsDataUrl(file);
         setAttachment({ kind: "file", filename: file.name, mime: "application/pdf", dataUrl });
@@ -326,7 +402,12 @@ function ChatPage() {
       } else {
         // Fall back to sending as a file blob (works for DOCX etc via Gemini)
         const dataUrl = await readFileAsDataUrl(file);
-        setAttachment({ kind: "file", filename: file.name, mime: file.type || "application/octet-stream", dataUrl });
+        setAttachment({
+          kind: "file",
+          filename: file.name,
+          mime: file.type || "application/octet-stream",
+          dataUrl,
+        });
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to read file");
@@ -337,7 +418,9 @@ function ChatPage() {
     if (recording || transcribing) return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       const ctx = new AudioCtx();
       const source = ctx.createMediaStreamSource(stream);
       const node = ctx.createScriptProcessor(4096, 1, 1);
@@ -382,9 +465,14 @@ function ChatPage() {
       <header className="flex items-center gap-2 px-3 py-2.5 border-b border-border/50 bg-background/70 backdrop-blur-xl">
         <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
           <SheetTrigger asChild>
-            <Button size="icon" variant="ghost"><Menu className="h-5 w-5" /></Button>
+            <Button size="icon" variant="ghost">
+              <Menu className="h-5 w-5" />
+            </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="p-0 w-[85vw] max-w-sm bg-sidebar border-sidebar-border">
+          <SheetContent
+            side="left"
+            className="p-0 w-[85vw] max-w-sm bg-sidebar border-sidebar-border"
+          >
             <SheetHeader className="p-4 border-b border-sidebar-border">
               <SheetTitle className="flex items-center gap-2">
                 <NepalLogo size={28} />
@@ -401,21 +489,26 @@ function ChatPage() {
             </div>
             <div className="px-2 pb-4 overflow-y-auto max-h-[calc(100dvh-180px)]">
               {conversations.length === 0 && (
-                <p className="text-xs text-muted-foreground px-3 py-6 text-center">No conversations yet.</p>
+                <p className="text-xs text-muted-foreground px-3 py-6 text-center">
+                  No conversations yet.
+                </p>
               )}
               {conversations.map((c) => (
                 <div
                   key={c.id}
                   className={cn(
                     "group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-sm hover:bg-sidebar-accent",
-                    activeId === c.id && "bg-sidebar-accent"
+                    activeId === c.id && "bg-sidebar-accent",
                   )}
                   onClick={() => selectConv(c.id)}
                 >
                   <MessageSquare className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                   <span className="truncate flex-1">{c.title}</span>
                   <button
-                    onClick={(e) => { e.stopPropagation(); deleteConv(c.id); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteConv(c.id);
+                    }}
                     className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -427,7 +520,9 @@ function ChatPage() {
               <Link to="/subscription">
                 <Button variant="ghost" className="w-full justify-start gap-2">
                   <Crown className="h-4 w-4 text-primary" /> Subscription
-                  <span className="ml-auto text-[10px] uppercase tracking-wider text-muted-foreground">{tier}</span>
+                  <span className="ml-auto text-[10px] uppercase tracking-wider text-muted-foreground">
+                    {tier}
+                  </span>
                 </Button>
               </Link>
               <Link to="/settings">
@@ -452,19 +547,26 @@ function ChatPage() {
         </div>
 
         <Link to="/settings">
-          <Button size="icon" variant="ghost"><SettingsIcon className="h-5 w-5" /></Button>
+          <Button size="icon" variant="ghost">
+            <SettingsIcon className="h-5 w-5" />
+          </Button>
         </Link>
       </header>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-4">
         <div className="max-w-2xl mx-auto space-y-4">
-          {messages.length === 0 && !sending && <EmptyState onPickLanguage={(l) => { setLanguage(l); setInput(`Give me a beginner-friendly starter program in ${l}.`); }} />}
+          {messages.length === 0 && !sending && (
+            <EmptyState
+              onPickLanguage={(l) => {
+                setLanguage(l);
+                setInput(`Give me a beginner-friendly starter program in ${l}.`);
+              }}
+            />
+          )}
           {messages.map((m, i) => {
-            const isLastAssistant =
-              m.role === "assistant" && i === messages.length - 1;
+            const isLastAssistant = m.role === "assistant" && i === messages.length - 1;
             const isLastUser =
-              m.role === "user" &&
-              !messages.slice(i + 1).some((n) => n.role === "user");
+              m.role === "user" && !messages.slice(i + 1).some((n) => n.role === "user");
             return (
               <MessageBubble
                 key={m.id}
@@ -493,138 +595,166 @@ function ChatPage() {
         </div>
       </div>
 
-      {(models.free.length > 0 || models.pro.length > 0) && (() => {
-        const familyOf = (id: string) => (id.includes("/") ? id.split("/")[0] : id.split(/[-:_ ]/)[0]).toLowerCase();
-        const families = Array.from(
-          new Set([...models.free, ...models.pro].map((m) => familyOf(m.id))),
-        ).sort();
-        const q = modelQuery.trim().toLowerCase();
-        const sortFn = (a: { id: string; label: string }, b: { id: string; label: string }) => {
-          if (modelSort === "name-desc") return b.label.localeCompare(a.label);
-          if (modelSort === "family") {
-            const fa = familyOf(a.id); const fb = familyOf(b.id);
-            return fa === fb ? a.label.localeCompare(b.label) : fa.localeCompare(fb);
-          }
-          return a.label.localeCompare(b.label);
-        };
-        const filterList = (list: { id: string; label: string }[]) =>
-          list
-            .filter((m) => {
-              if (q && !(m.label.toLowerCase().includes(q) || m.id.toLowerCase().includes(q))) return false;
-              if (modelFamily !== "all" && familyOf(m.id) !== modelFamily) return false;
-              return true;
-            })
-            .slice()
-            .sort(sortFn);
-        const freeShown = modelTier === "pro" ? [] : filterList(models.free);
-        const proShown = modelTier === "free" ? [] : filterList(models.pro);
-        const totalShown = freeShown.length + proShown.length;
-        const activeLabel =
-          [...models.free, ...models.pro].find((m) => m.id === meshModel)?.label ?? "Default (auto)";
-        const activeTier = meshModel
-          ? models.pro.some((m) => m.id === meshModel) ? "Pro" : "Free"
-          : "Auto";
-        return (
-          <div className="border-t border-border/50 bg-background/60 backdrop-blur-xl px-3 py-2">
-            <div className="max-w-2xl mx-auto space-y-1.5">
-              <button
-                type="button"
-                onClick={() => setModelsOpen((o) => !o)}
-                aria-expanded={modelsOpen}
-                className="w-full flex items-center gap-2 rounded-xl border border-border/60 bg-card/50 hover:bg-card px-3 py-2 text-xs transition"
-              >
-                {activeTier === "Pro" ? (
-                  <Crown className="h-3.5 w-3.5 text-primary" />
-                ) : (
-                  <Sparkles className="h-3.5 w-3.5 text-primary" />
-                )}
-                <span className="truncate font-medium">{activeLabel}</span>
-                <span className="shrink-0 rounded-full border border-border/60 px-1.5 py-px text-[10px] uppercase tracking-wider text-muted-foreground">
-                  {activeTier}
-                </span>
-                <ChevronDown
-                  className={cn("ml-auto h-4 w-4 text-muted-foreground transition-transform duration-300", modelsOpen && "rotate-180")}
-                />
-              </button>
-              <div
-                className="overflow-hidden transition-[max-height,opacity] duration-300 ease-in-out"
-                style={{ maxHeight: modelsOpen ? 420 : 0, opacity: modelsOpen ? 1 : 0 }}
-              >
-              <div className="space-y-1.5 pt-1">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <div className="relative flex-1 min-w-[140px]">
-                  <Search className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                  <Input
-                    value={modelQuery}
-                    onChange={(e) => setModelQuery(e.target.value)}
-                    placeholder="Search models…"
-                    className="h-8 pl-7 pr-7 text-xs bg-input/60"
-                  />
-                  {modelQuery && (
-                    <button
-                      onClick={() => setModelQuery("")}
-                      className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                      aria-label="Clear search"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
+      {(models.free.length > 0 || models.pro.length > 0) &&
+        (() => {
+          const familyOf = (id: string) =>
+            (id.includes("/") ? id.split("/")[0] : id.split(/[-:_ ]/)[0]).toLowerCase();
+          const families = Array.from(
+            new Set([...models.free, ...models.pro].map((m) => familyOf(m.id))),
+          ).sort();
+          const q = modelQuery.trim().toLowerCase();
+          const sortFn = (a: { id: string; label: string }, b: { id: string; label: string }) => {
+            if (modelSort === "name-desc") return b.label.localeCompare(a.label);
+            if (modelSort === "family") {
+              const fa = familyOf(a.id);
+              const fb = familyOf(b.id);
+              return fa === fb ? a.label.localeCompare(b.label) : fa.localeCompare(fb);
+            }
+            return a.label.localeCompare(b.label);
+          };
+          const filterList = (list: { id: string; label: string }[]) =>
+            list
+              .filter((m) => {
+                if (q && !(m.label.toLowerCase().includes(q) || m.id.toLowerCase().includes(q)))
+                  return false;
+                if (modelFamily !== "all" && familyOf(m.id) !== modelFamily) return false;
+                return true;
+              })
+              .slice()
+              .sort(sortFn);
+          const freeShown = modelTier === "pro" ? [] : filterList(models.free);
+          const proShown = modelTier === "free" ? [] : filterList(models.pro);
+          const totalShown = freeShown.length + proShown.length;
+          const activeLabel =
+            [...models.free, ...models.pro].find((m) => m.id === meshModel)?.label ??
+            "Default (auto)";
+          const activeTier = meshModel
+            ? models.pro.some((m) => m.id === meshModel)
+              ? "Pro"
+              : "Free"
+            : "Auto";
+          return (
+            <div className="border-t border-border/50 bg-background/60 backdrop-blur-xl px-3 py-2">
+              <div className="max-w-2xl mx-auto space-y-1.5">
+                <button
+                  type="button"
+                  onClick={() => setModelsOpen((o) => !o)}
+                  aria-expanded={modelsOpen}
+                  className="w-full flex items-center gap-2 rounded-xl border border-border/60 bg-card/50 hover:bg-card px-3 py-2 text-xs transition"
+                >
+                  {activeTier === "Pro" ? (
+                    <Crown className="h-3.5 w-3.5 text-primary" />
+                  ) : (
+                    <Sparkles className="h-3.5 w-3.5 text-primary" />
                   )}
+                  <span className="truncate font-medium">{activeLabel}</span>
+                  <span className="shrink-0 rounded-full border border-border/60 px-1.5 py-px text-[10px] uppercase tracking-wider text-muted-foreground">
+                    {activeTier}
+                  </span>
+                  <ChevronDown
+                    className={cn(
+                      "ml-auto h-4 w-4 text-muted-foreground transition-transform duration-300",
+                      modelsOpen && "rotate-180",
+                    )}
+                  />
+                </button>
+                <div
+                  className="overflow-hidden transition-[max-height,opacity] duration-300 ease-in-out"
+                  style={{ maxHeight: modelsOpen ? 420 : 0, opacity: modelsOpen ? 1 : 0 }}
+                >
+                  <div className="space-y-1.5 pt-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <div className="relative flex-1 min-w-[140px]">
+                        <Search className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                        <Input
+                          value={modelQuery}
+                          onChange={(e) => setModelQuery(e.target.value)}
+                          placeholder="Search models…"
+                          className="h-8 pl-7 pr-7 text-xs bg-input/60"
+                        />
+                        {modelQuery && (
+                          <button
+                            onClick={() => setModelQuery("")}
+                            className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                            aria-label="Clear search"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                      <Select
+                        value={modelTier}
+                        onValueChange={(v) => setModelTier(v as "all" | "free" | "pro")}
+                      >
+                        <SelectTrigger className="h-8 w-[92px] text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All tiers</SelectItem>
+                          <SelectItem value="free">Free only</SelectItem>
+                          <SelectItem value="pro">Pro only</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Select value={modelFamily} onValueChange={setModelFamily}>
+                        <SelectTrigger className="h-8 w-[110px] text-xs">
+                          <SelectValue placeholder="Family" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-64">
+                          <SelectItem value="all">All families</SelectItem>
+                          {families.map((f) => (
+                            <SelectItem key={f} value={f}>
+                              {f}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        value={modelSort}
+                        onValueChange={(v) =>
+                          setModelSort(v as "name-asc" | "name-desc" | "family")
+                        }
+                      >
+                        <SelectTrigger className="h-8 w-[110px] text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="name-asc">Name A–Z</SelectItem>
+                          <SelectItem value="name-desc">Name Z–A</SelectItem>
+                          <SelectItem value="family">By family</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {totalShown === 0 ? (
+                      <p className="text-[11px] text-muted-foreground px-1 py-2">
+                        No models match your filters.
+                      </p>
+                    ) : (
+                      <>
+                        <ModelRow
+                          label={`Free Models${freeShown.length ? ` (${freeShown.length})` : ""}`}
+                          icon={<Sparkles className="h-3 w-3 text-primary" />}
+                          models={freeShown}
+                          selected={meshModel}
+                          onPick={(id) => pickModel(id, true)}
+                          onClear={clearModel}
+                          showDefault={modelTier !== "pro" && !q && modelFamily === "all"}
+                        />
+                        <ModelRow
+                          label={`Pro Models${proShown.length ? ` (${proShown.length})` : ""}`}
+                          icon={<Crown className="h-3 w-3 text-primary" />}
+                          models={proShown}
+                          selected={meshModel}
+                          onPick={(id) => pickModel(id, false)}
+                          locked={tier !== "pro"}
+                        />
+                      </>
+                    )}
+                  </div>
                 </div>
-                <Select value={modelTier} onValueChange={(v) => setModelTier(v as "all" | "free" | "pro")}>
-                  <SelectTrigger className="h-8 w-[92px] text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All tiers</SelectItem>
-                    <SelectItem value="free">Free only</SelectItem>
-                    <SelectItem value="pro">Pro only</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={modelFamily} onValueChange={setModelFamily}>
-                  <SelectTrigger className="h-8 w-[110px] text-xs"><SelectValue placeholder="Family" /></SelectTrigger>
-                  <SelectContent className="max-h-64">
-                    <SelectItem value="all">All families</SelectItem>
-                    {families.map((f) => (
-                      <SelectItem key={f} value={f}>{f}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={modelSort} onValueChange={(v) => setModelSort(v as "name-asc" | "name-desc" | "family")}>
-                  <SelectTrigger className="h-8 w-[110px] text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="name-asc">Name A–Z</SelectItem>
-                    <SelectItem value="name-desc">Name Z–A</SelectItem>
-                    <SelectItem value="family">By family</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              {totalShown === 0 ? (
-                <p className="text-[11px] text-muted-foreground px-1 py-2">No models match your filters.</p>
-              ) : (
-                <>
-                  <ModelRow
-                    label={`Free Models${freeShown.length ? ` (${freeShown.length})` : ""}`}
-                    icon={<Sparkles className="h-3 w-3 text-primary" />}
-                    models={freeShown}
-                    selected={meshModel}
-                    onPick={(id) => pickModel(id, true)}
-                    onClear={clearModel}
-                    showDefault={modelTier !== "pro" && !q && modelFamily === "all"}
-                  />
-                  <ModelRow
-                    label={`Pro Models${proShown.length ? ` (${proShown.length})` : ""}`}
-                    icon={<Crown className="h-3 w-3 text-primary" />}
-                    models={proShown}
-                    selected={meshModel}
-                    onPick={(id) => pickModel(id, false)}
-                    locked={tier !== "pro"}
-                  />
-                </>
-              )}
-              </div>
               </div>
             </div>
-          </div>
-        );
-      })()}
+          );
+        })()}
       <div className="border-t border-border/50 bg-background/80 backdrop-blur-xl px-3 pt-2 pb-3 space-y-2">
         <div className="max-w-2xl mx-auto flex items-center gap-2">
           <Select value={language} onValueChange={setLanguage}>
@@ -634,7 +764,8 @@ function ChatPage() {
             <SelectContent>
               {LANGUAGES.map((l) => (
                 <SelectItem key={l.id} value={l.id}>
-                  <span className="mr-1.5">{l.emoji}</span>{l.label}
+                  <span className="mr-1.5">{l.emoji}</span>
+                  {l.label}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -651,7 +782,11 @@ function ChatPage() {
             variant="outline"
             className="h-8 gap-1.5 text-xs"
           >
-            {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+            {testing ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Zap className="h-3.5 w-3.5" />
+            )}
             Test
           </Button>
         </div>
@@ -661,7 +796,10 @@ function ChatPage() {
             type="file"
             className="hidden"
             accept="image/*,application/pdf,.txt,.md,.json,.csv,.yaml,.yml,.xml,.html,.css,.js,.jsx,.ts,.tsx,.py,.rb,.go,.rs,.java,.kt,.swift,.c,.h,.cpp,.hpp,.cs,.php,.sh,.sql,.docx"
-            onChange={(e) => { void handleFilePicked(e.target.files?.[0]); e.currentTarget.value = ""; }}
+            onChange={(e) => {
+              void handleFilePicked(e.target.files?.[0]);
+              e.currentTarget.value = "";
+            }}
           />
           <input
             ref={cameraInputRef}
@@ -669,13 +807,28 @@ function ChatPage() {
             accept="image/*"
             capture="environment"
             className="hidden"
-            onChange={(e) => { void handleFilePicked(e.target.files?.[0]); e.currentTarget.value = ""; }}
+            onChange={(e) => {
+              void handleFilePicked(e.target.files?.[0]);
+              e.currentTarget.value = "";
+            }}
           />
           <div className="flex flex-col gap-1">
-            <Button size="icon" variant="ghost" className="h-9 w-9" title="Attach file" onClick={() => fileInputRef.current?.click()}>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-9 w-9"
+              title="Attach file"
+              onClick={() => fileInputRef.current?.click()}
+            >
               <Paperclip className="h-4 w-4" />
             </Button>
-            <Button size="icon" variant="ghost" className="h-9 w-9" title="Camera" onClick={() => cameraInputRef.current?.click()}>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-9 w-9"
+              title="Camera"
+              onClick={() => cameraInputRef.current?.click()}
+            >
               <Camera className="h-4 w-4" />
             </Button>
           </div>
@@ -702,7 +855,13 @@ function ChatPage() {
             className="h-12 w-12 shrink-0"
             title={recording ? "Stop recording" : "Voice input"}
           >
-            {transcribing ? <Loader2 className="h-4 w-4 animate-spin" /> : recording ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+            {transcribing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : recording ? (
+              <Square className="h-4 w-4" />
+            ) : (
+              <Mic className="h-4 w-4" />
+            )}
           </Button>
           <Button
             onClick={() => void send()}
@@ -742,7 +901,9 @@ function ChatPage() {
 function EmptyState({ onPickLanguage }: { onPickLanguage: (id: string) => void }) {
   return (
     <div className="text-center pt-8 pb-6 space-y-5">
-      <div className="flex justify-center"><NepalLogo size={72} /></div>
+      <div className="flex justify-center">
+        <NepalLogo size={72} />
+      </div>
       <div>
         <h2 className="text-2xl font-bold">Namaste 🙏</h2>
         <p className="text-sm text-muted-foreground mt-1">
@@ -776,7 +937,11 @@ function MessageBubble({
   message: Message;
   onRegenerate?: () => void | Promise<void>;
   onEdit?: (newContent: string) => void | Promise<void>;
-  onExplainError?: (payload: { language: string; code: string; errorText: string }) => void | Promise<void>;
+  onExplainError?: (payload: {
+    language: string;
+    code: string;
+    errorText: string;
+  }) => void | Promise<void>;
   onFollowUp?: (question: string) => void | Promise<void>;
   sending?: boolean;
 }) {
@@ -804,14 +969,25 @@ function MessageBubble({
                 className="min-h-[80px] bg-transparent border-none focus-visible:ring-0 text-sm resize-none"
               />
               <div className="flex justify-end gap-1 mt-1">
-                <Button size="sm" variant="ghost" className="h-7 gap-1" onClick={() => { setEditing(false); setDraft(message.content); }}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 gap-1"
+                  onClick={() => {
+                    setEditing(false);
+                    setDraft(message.content);
+                  }}
+                >
                   <X className="h-3 w-3" /> Cancel
                 </Button>
                 <Button
                   size="sm"
                   className="h-7 gap-1"
                   disabled={sending || !draft.trim() || draft === message.content}
-                  onClick={async () => { setEditing(false); await onEdit?.(draft.trim()); }}
+                  onClick={async () => {
+                    setEditing(false);
+                    await onEdit?.(draft.trim());
+                  }}
                 >
                   <RefreshCw className="h-3 w-3" /> Resend
                 </Button>
@@ -824,7 +1000,10 @@ function MessageBubble({
           )}
           {onEdit && !editing && (
             <button
-              onClick={() => { setDraft(message.content); setEditing(true); }}
+              onClick={() => {
+                setDraft(message.content);
+                setEditing(true);
+              }}
               className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition"
             >
               <Pencil className="h-3 w-3" /> Edit
@@ -850,7 +1029,12 @@ function MessageBubble({
         {sources.length > 0 && <SourceCards sources={sources} />}
         {segments.map((seg, i) =>
           seg.type === "code" ? (
-            <CodeBlock key={i} language={seg.lang} value={seg.value} onExplainError={onExplainError} />
+            <CodeBlock
+              key={i}
+              language={seg.lang}
+              value={seg.value}
+              onExplainError={onExplainError}
+            />
           ) : (
             <div
               key={i}
@@ -860,7 +1044,12 @@ function MessageBubble({
                 components={{
                   code({ className, children }) {
                     return (
-                      <code className={cn("rounded bg-muted px-1.5 py-0.5 text-xs font-mono", className)}>
+                      <code
+                        className={cn(
+                          "rounded bg-muted px-1.5 py-0.5 text-xs font-mono",
+                          className,
+                        )}
+                      >
                         {children}
                       </code>
                     );
@@ -915,13 +1104,15 @@ function MessageBubble({
   );
 }
 
-
 // Downsample+encode Float32 PCM chunks into a mono 16-bit WAV Blob-ready buffer.
 function encodeWav(chunks: Float32Array[], sampleRate: number, target = 16000): ArrayBuffer {
   const total = chunks.reduce((n, c) => n + c.length, 0);
   const merged = new Float32Array(total);
   let o = 0;
-  for (const c of chunks) { merged.set(c, o); o += c.length; }
+  for (const c of chunks) {
+    merged.set(c, o);
+    o += c.length;
+  }
   const ratio = sampleRate / target;
   const outLen = Math.floor(merged.length / ratio);
   const pcm = new Int16Array(outLen);
@@ -931,7 +1122,9 @@ function encodeWav(chunks: Float32Array[], sampleRate: number, target = 16000): 
   }
   const buf = new ArrayBuffer(44 + pcm.byteLength);
   const view = new DataView(buf);
-  const writeStr = (off: number, s: string) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
+  const writeStr = (off: number, s: string) => {
+    for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i));
+  };
   writeStr(0, "RIFF");
   view.setUint32(4, 36 + pcm.byteLength, true);
   writeStr(8, "WAVE");
@@ -962,7 +1155,14 @@ function blobToBase64(blob: Blob): Promise<string> {
 }
 
 function ModelRow({
-  label, icon, models, selected, onPick, onClear, locked, showDefault,
+  label,
+  icon,
+  models,
+  selected,
+  onPick,
+  onClear,
+  locked,
+  showDefault,
 }: {
   label: string;
   icon: React.ReactNode;

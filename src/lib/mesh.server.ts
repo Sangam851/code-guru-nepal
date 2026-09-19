@@ -53,9 +53,11 @@ function friendlyError(status: number, body: string): string {
   if (/insufficient balance|spend_limit/i.test(compact)) {
     return `This model requires paid credits. Please pick a free model. (${compact})`;
   }
-  if (status === 401 || status === 403) return `Mesh authentication failed. Please contact support. (${compact})`;
+  if (status === 401 || status === 403)
+    return `Mesh authentication failed. Please contact support. (${compact})`;
   if (status === 402) return `Mesh account has insufficient credits. ${compact}`;
-  if (status === 404) return `That model is no longer available on Mesh. Pick another model. (${compact})`;
+  if (status === 404)
+    return `That model is no longer available on Mesh. Pick another model. (${compact})`;
   if (status === 429) return `Mesh is rate limiting requests. Please retry in a moment.`;
   if (status >= 500) return `Mesh is temporarily unavailable (${status}). Please try again.`;
   return `Mesh error ${status}: ${compact}`;
@@ -102,7 +104,9 @@ async function meshFetch(
       const isAbort = err.name === "AbortError";
       lastError = isAbort
         ? new MeshError("The AI request timed out. Please try again.", 408)
-        : (err instanceof MeshError ? err : new MeshError(`Cannot reach the AI service: ${err.message}`, 0));
+        : err instanceof MeshError
+          ? err
+          : new MeshError(`Cannot reach the AI service: ${err.message}`, 0);
       if (attempt >= MAX_RETRIES) throw lastError;
       await new Promise((r) => setTimeout(r, 400 * 2 ** attempt));
       continue;
@@ -144,7 +148,11 @@ export async function fetchMeshModels(force = false): Promise<MeshModel[]> {
   return models;
 }
 
-export async function listMeshModelsSafe(): Promise<{ free: MeshModel[]; pro: MeshModel[]; error?: string }> {
+export async function listMeshModelsSafe(): Promise<{
+  free: MeshModel[];
+  pro: MeshModel[];
+  error?: string;
+}> {
   try {
     // Only conversational models belong in the picker.
     const all = (await fetchMeshModels()).filter(

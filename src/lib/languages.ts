@@ -7,10 +7,25 @@ export type LanguageOption = {
 
 export const LANGUAGES: LanguageOption[] = [
   { id: "python", label: "Python", emoji: "🐍", starter: 'print("Namaste, Nepal!")' },
-  { id: "javascript", label: "JavaScript", emoji: "⚡", starter: 'console.log("Namaste, Nepal!");' },
+  {
+    id: "javascript",
+    label: "JavaScript",
+    emoji: "⚡",
+    starter: 'console.log("Namaste, Nepal!");',
+  },
   { id: "typescript", label: "TypeScript", emoji: "🔷", starter: 'const msg: string = "Namaste";' },
-  { id: "c", label: "C", emoji: "🅲", starter: '#include <stdio.h>\nint main(){ printf("Namaste"); }' },
-  { id: "cpp", label: "C++", emoji: "➕", starter: '#include <iostream>\nint main(){ std::cout << "Namaste"; }' },
+  {
+    id: "c",
+    label: "C",
+    emoji: "🅲",
+    starter: '#include <stdio.h>\nint main(){ printf("Namaste"); }',
+  },
+  {
+    id: "cpp",
+    label: "C++",
+    emoji: "➕",
+    starter: '#include <iostream>\nint main(){ std::cout << "Namaste"; }',
+  },
   { id: "csharp", label: "C#", emoji: "🎯", starter: 'Console.WriteLine("Namaste");' },
   { id: "java", label: "Java", emoji: "☕", starter: 'System.out.println("Namaste");' },
   { id: "sql", label: "SQL", emoji: "🗄️", starter: "SELECT 'Namaste' AS greeting;" },
