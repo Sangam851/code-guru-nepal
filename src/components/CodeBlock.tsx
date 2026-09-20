@@ -110,8 +110,29 @@ export function CodeBlock({
         } else if (res && !res.ok && "rateLimited" in res && res.rateLimited) {
           setRunOutput({ error: res.error, rateLimited: true });
         } else if (isPython) {
-          const { stdout, stderr } = await runPython(value);
-          setRunOutput({ stdout, stderr, exitCode: stderr ? 1 : 0 });
+          // Browser fallback (Pyodide) has no keyboard/stdin at all, so any
+          // input() call fails with OSError [Errno 29]. Say so plainly.
+          if (needsInput) {
+            setRunOutput({
+              error:
+                "This program uses input(), but the in-browser Python fallback has no keyboard input, so it can't ask you questions.\n\n" +
+                "What to do:\n" +
+                "1. Click “Add input” above and type each value on its own line, then Run again (the real runner will use them).\n" +
+                "2. Or replace the input() lines with fixed values, e.g.  num1 = 5  instead of  num1 = float(input(\"Enter the first number: \")).\n" +
+                "3. Or wrap the logic in a function and call it with arguments: multiply_numbers(5, 4).",
+            });
+          } else {
+            const { stdout, stderr } = await runPython(value);
+            const blockedByStdin = /Errno 29|I\/O error|OSError: \[Errno 29\]/i.test(stderr);
+            setRunOutput(
+              blockedByStdin
+                ? {
+                    error:
+                      "The in-browser Python fallback can't read keyboard input. Use the “Add input” box above, or replace input() with fixed values.",
+                  }
+                : { stdout, stderr, exitCode: stderr ? 1 : 0 },
+            );
+          }
         } else {
           setRunOutput({ error: res?.error ?? "Run failed" });
         }
