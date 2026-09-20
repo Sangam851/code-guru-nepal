@@ -63,6 +63,11 @@ export function CodeBlock({
   // iframe, everything else shows a live console preview of the executed code.
   const canPreview = canWebPreview || canRemoteRun;
   const unsupported = Boolean(lang) && !canRun;
+  // Programs that read from the keyboard need stdin supplied up-front, since the
+  // runner is non-interactive.
+  const needsInput =
+    canRemoteRun &&
+    /\binput\s*\(|\bscanf\s*\(|\bgets\s*\(|new\s+Scanner\s*\(|\bcin\s*>>|Console\.ReadLine\s*\(|bufio\.NewReader|readline\s*\(/.test(value);
   const errorText = [runOutput?.error, runOutput?.stderr].filter(Boolean).join("\n").trim();
   const hasRealError = Boolean(errorText) && !runOutput?.sandboxDoc && !runOutput?.rateLimited;
 
