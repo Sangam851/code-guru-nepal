@@ -34,6 +34,8 @@ export function CodeBlock({
   const [copied, setCopied] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [running, setRunning] = useState(false);
+  const [stdin, setStdin] = useState("");
+  const [showStdin, setShowStdin] = useState(false);
   const [runOutput, setRunOutput] = useState<null | {
     stdout?: string;
     stderr?: string;
