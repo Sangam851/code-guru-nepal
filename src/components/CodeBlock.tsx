@@ -188,11 +188,15 @@ export function CodeBlock({
             {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5 text-primary" />}
             {running ? "Running…" : canSandbox ? "Run" : "Run Code"}
           </Button>
-          {!canSandbox && (
-            <span className="text-[11px] text-muted-foreground">
-              {isPython ? "runs in your browser (Pyodide)" : "real execution (live runner API)"}
-            </span>
+          {canRemoteRun && (
+            <button
+              onClick={() => setShowStdin((s) => !s)}
+              className={`text-[11px] hover:text-foreground ${needsInput || showStdin ? "text-primary" : "text-muted-foreground"}`}
+            >
+              {showStdin ? "Hide input" : needsInput ? "Add input (needed)" : "Add input"}
+            </button>
           )}
+          {!canSandbox && <span className="text-[11px] text-muted-foreground">real execution</span>}
           {runOutput && (
             <button
               onClick={() => setRunOutput(null)}
@@ -201,6 +205,20 @@ export function CodeBlock({
               <X className="h-3 w-3" /> Clear output
             </button>
           )}
+        </div>
+      )}
+      {canRun && (showStdin || (needsInput && !runOutput)) && (
+        <div className="px-3 pb-2 pt-1 border-t border-border/60 bg-[#141414]">
+          <label className="text-[11px] text-muted-foreground">
+            Program input (one value per line — this program asks for input)
+          </label>
+          <textarea
+            value={stdin}
+            onChange={(e) => setStdin(e.target.value)}
+            rows={2}
+            placeholder={"3\n4"}
+            className="mt-1 w-full rounded-md bg-[#0a0a0a] border border-border/60 p-2 text-[12px] font-mono text-foreground/90 outline-none focus:border-primary/60"
+          />
         </div>
       )}
       {unsupported && (
