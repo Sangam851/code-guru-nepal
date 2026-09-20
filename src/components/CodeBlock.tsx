@@ -96,18 +96,25 @@ export function CodeBlock({
     try {
       if (canSandbox) {
         setRunOutput({ sandboxDoc: srcDoc || value });
-      } else if (isPython) {
-        // Runs entirely in the browser via Pyodide (WebAssembly).
-        const { stdout, stderr } = await runPython(value);
-        setRunOutput({ stdout, stderr, exitCode: stderr ? 1 : 0 });
       } else {
-        const res = await runFn({ data: { language: lang, code: value } });
-        if (!res.ok)
-          setRunOutput({
-            error: res.error,
-            rateLimited: "rateLimited" in res ? Boolean(res.rateLimited) : false,
-          });
-        else setRunOutput({ stdout: res.stdout, stderr: res.stderr, exitCode: res.exitCode });
+        // Everything else (Python included) runs on the real runner, which
+        // supports stdin — the browser Python runtime is only a fallback.
+        let res: Awaited<ReturnType<typeof runFn>> | null = null;
+        try {
+          res = await runFn({ data: { language: lang, code: value, stdin } });
+        } catch (err) {
+          if (!isPython) throw err;
+        }
+        if (res && res.ok) {
+          setRunOutput({ stdout: res.stdout, stderr: res.stderr, exitCode: res.exitCode });
+        } else if (res && !res.ok && "rateLimited" in res && res.rateLimited) {
+          setRunOutput({ error: res.error, rateLimited: true });
+        } else if (isPython) {
+          const { stdout, stderr } = await runPython(value);
+          setRunOutput({ stdout, stderr, exitCode: stderr ? 1 : 0 });
+        } else {
+          setRunOutput({ error: res?.error ?? "Run failed" });
+        }
       }
     } catch (e) {
       setRunOutput({ error: e instanceof Error ? e.message : "Run failed" });
