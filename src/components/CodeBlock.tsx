@@ -34,6 +34,8 @@ export function CodeBlock({
   const [copied, setCopied] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [running, setRunning] = useState(false);
+  const [stdin, setStdin] = useState("");
+  const [showStdin, setShowStdin] = useState(false);
   const [runOutput, setRunOutput] = useState<null | {
     stdout?: string;
     stderr?: string;
@@ -61,6 +63,11 @@ export function CodeBlock({
   // iframe, everything else shows a live console preview of the executed code.
   const canPreview = canWebPreview || canRemoteRun;
   const unsupported = Boolean(lang) && !canRun;
+  // Programs that read from the keyboard need stdin supplied up-front, since the
+  // runner is non-interactive.
+  const needsInput =
+    canRemoteRun &&
+    /\binput\s*\(|\bscanf\s*\(|\bgets\s*\(|new\s+Scanner\s*\(|\bcin\s*>>|Console\.ReadLine\s*\(|bufio\.NewReader|readline\s*\(/.test(value);
   const errorText = [runOutput?.error, runOutput?.stderr].filter(Boolean).join("\n").trim();
   const hasRealError = Boolean(errorText) && !runOutput?.sandboxDoc && !runOutput?.rateLimited;
 
@@ -89,18 +96,25 @@ export function CodeBlock({
     try {
       if (canSandbox) {
         setRunOutput({ sandboxDoc: srcDoc || value });
-      } else if (isPython) {
-        // Runs entirely in the browser via Pyodide (WebAssembly).
-        const { stdout, stderr } = await runPython(value);
-        setRunOutput({ stdout, stderr, exitCode: stderr ? 1 : 0 });
       } else {
-        const res = await runFn({ data: { language: lang, code: value } });
-        if (!res.ok)
-          setRunOutput({
-            error: res.error,
-            rateLimited: "rateLimited" in res ? Boolean(res.rateLimited) : false,
-          });
-        else setRunOutput({ stdout: res.stdout, stderr: res.stderr, exitCode: res.exitCode });
+        // Everything else (Python included) runs on the real runner, which
+        // supports stdin — the browser Python runtime is only a fallback.
+        let res: Awaited<ReturnType<typeof runFn>> | null = null;
+        try {
+          res = await runFn({ data: { language: lang, code: value, stdin } });
+        } catch (err) {
+          if (!isPython) throw err;
+        }
+        if (res && res.ok) {
+          setRunOutput({ stdout: res.stdout, stderr: res.stderr, exitCode: res.exitCode });
+        } else if (res && !res.ok && "rateLimited" in res && res.rateLimited) {
+          setRunOutput({ error: res.error, rateLimited: true });
+        } else if (isPython) {
+          const { stdout, stderr } = await runPython(value);
+          setRunOutput({ stdout, stderr, exitCode: stderr ? 1 : 0 });
+        } else {
+          setRunOutput({ error: res?.error ?? "Run failed" });
+        }
       }
     } catch (e) {
       setRunOutput({ error: e instanceof Error ? e.message : "Run failed" });
@@ -174,11 +188,15 @@ export function CodeBlock({
             {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5 text-primary" />}
             {running ? "Running…" : canSandbox ? "Run" : "Run Code"}
           </Button>
-          {!canSandbox && (
-            <span className="text-[11px] text-muted-foreground">
-              {isPython ? "runs in your browser (Pyodide)" : "real execution (live runner API)"}
-            </span>
+          {canRemoteRun && (
+            <button
+              onClick={() => setShowStdin((s) => !s)}
+              className={`text-[11px] hover:text-foreground ${needsInput || showStdin ? "text-primary" : "text-muted-foreground"}`}
+            >
+              {showStdin ? "Hide input" : needsInput ? "Add input (needed)" : "Add input"}
+            </button>
           )}
+          {!canSandbox && <span className="text-[11px] text-muted-foreground">real execution</span>}
           {runOutput && (
             <button
               onClick={() => setRunOutput(null)}
@@ -187,6 +205,20 @@ export function CodeBlock({
               <X className="h-3 w-3" /> Clear output
             </button>
           )}
+        </div>
+      )}
+      {canRun && (showStdin || (needsInput && !runOutput)) && (
+        <div className="px-3 pb-2 pt-1 border-t border-border/60 bg-[#141414]">
+          <label className="text-[11px] text-muted-foreground">
+            Program input (one value per line — this program asks for input)
+          </label>
+          <textarea
+            value={stdin}
+            onChange={(e) => setStdin(e.target.value)}
+            rows={2}
+            placeholder={"3\n4"}
+            className="mt-1 w-full rounded-md bg-[#0a0a0a] border border-border/60 p-2 text-[12px] font-mono text-foreground/90 outline-none focus:border-primary/60"
+          />
         </div>
       )}
       {unsupported && (
